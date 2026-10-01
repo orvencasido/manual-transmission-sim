@@ -51,32 +51,45 @@ const INITIAL_VEHICLE_STATE: VehicleState = {
 
 interface SimulatorStore {
   vehicleState: VehicleState;
+  activeFeedback: InstructorFeedback | null;
   feedbacks: InstructorFeedback[];
   isPaused: boolean;
+  isMuted: boolean;
   updateVehicleState: (state: VehicleState) => void;
+  setActiveFeedback: (feedback: InstructorFeedback | null) => void;
   addFeedback: (feedback: InstructorFeedback) => void;
   clearFeedback: () => void;
   setPaused: (paused: boolean) => void;
   togglePause: () => void;
+  setMuted: (muted: boolean) => void;
+  toggleMute: () => void;
   reset: () => void;
 }
 
 export const useSimulatorStore = create<SimulatorStore>((set) => ({
   vehicleState: INITIAL_VEHICLE_STATE,
+  activeFeedback: null,
   feedbacks: [],
   isPaused: false,
+  isMuted: false,
   updateVehicleState: (state) => set({ vehicleState: state }),
+  setActiveFeedback: (feedback) => set({ activeFeedback: feedback }),
   addFeedback: (feedback) =>
     set((s) => ({
-      feedbacks: [feedback, ...s.feedbacks.slice(0, 4)],
+      activeFeedback: feedback,
+      feedbacks: [feedback, ...s.feedbacks.filter((f) => f.id !== feedback.id).slice(0, 9)],
     })),
-  clearFeedback: () => set({ feedbacks: [] }),
+  clearFeedback: () => set({ feedbacks: [], activeFeedback: null }),
   setPaused: (paused) => set({ isPaused: paused }),
   togglePause: () => set((s) => ({ isPaused: !s.isPaused })),
+  setMuted: (muted) => set({ isMuted: muted }),
+  toggleMute: () => set((s) => ({ isMuted: !s.isMuted })),
   reset: () =>
     set({
       vehicleState: INITIAL_VEHICLE_STATE,
+      activeFeedback: null,
       feedbacks: [],
       isPaused: false,
     }),
 }));
+

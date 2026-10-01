@@ -1,10 +1,10 @@
 /**
- * Simulation Orchestrator — Placeholder & Initial Contracts
+ * Simulation Orchestrator — Powertrain & Vehicle Dynamics Coordination
  * Manual Driving Trainer
  */
 
 import { VehicleConfig, VehicleState, InputState } from './types';
-import { DEFAULT_VEHICLE_CONFIG } from './physics';
+import { clamp, DEFAULT_VEHICLE_CONFIG } from './physics';
 import { EngineModel } from './engine';
 import { ClutchModel } from './clutch';
 import { TransmissionModel } from './transmission';
@@ -16,6 +16,15 @@ export class Simulation {
   private clutch: ClutchModel;
   private transmission: TransmissionModel;
   private vehicle: VehicleDynamicsModel;
+  private lastInput: InputState = {
+    throttle: 0.0,
+    brake: 0.0,
+    clutch: 0.0,
+    steering: 0.0,
+    gear: 0,
+    parkingBrake: true,
+    isStarterEngaged: false,
+  };
 
   constructor(config: VehicleConfig = DEFAULT_VEHICLE_CONFIG) {
     this.config = config;
@@ -25,33 +34,125 @@ export class Simulation {
     this.vehicle = new VehicleDynamicsModel(config);
   }
 
+  /**
+   * Execute one simulation time step dt
+   *
+   * @param input Current controls / pedal state
+   * @param dt Elapsed delta time in seconds
+   */
   public tick(input: InputState, dt: number): void {
+    this.lastInput = { ...input };
+
+    // 1. Synchronize transmission gear selection and current wheel rotational speed
+    const currentWheelSpeed = this.vehicle.getState().speed / this.config.wheelRadius;
     this.transmission.setGear(input.gear);
-    this.clutch.update(input.clutch, this.engine.getState().angularVelocity, 0, dt);
-    this.engine.update(input.throttle, this.clutch.getState().slipTorque, dt);
-    this.transmission.update(this.clutch.getState().slipTorque, 0);
-    this.vehicle.update(this.transmission.getState().wheelTorque, input.brake, input.parkingBrake, dt);
+    this.transmission.update(this.clutch.getState().slipTorque, currentWheelSpeed);
+
+    const transState = this.transmission.getState();
+    const engineState = this.engine.getState();
+    const isNeutral = input.gear === 0;
+
+    // 2. Determine transmission input shaft rotational speed (rad/s)
+    // In neutral (gear 0), the input shaft is disconnected from the driven wheels.
+    // When the clutch is engaged in neutral, the input shaft spins freely with the engine flywheel.
+    // When in gear, the input shaft is coupled to the driven wheels through the gear ratio.
+    const transInputSpeed = isNeutral
+      ? (input.clutch < this.config.clutch.bitePointEnd ? engineState.angularVelocity : transState.inputShaftSpeed)
+      : transState.inputShaftSpeed;
+
+    // 3. Update clutch engagement, slip speed, locked state, and Coulomb friction torque
+    this.clutch.update(input.clutch, engineState.angularVelocity, transInputSpeed, dt);
+    const clutchState = this.clutch.getState();
+
+    // 4. Update engine dynamics and determine torque transmitted into gearbox
+    let transInputTorque = clutchState.slipTorque;
+
+    if (clutchState.isLocked && !isNeutral) {
+      // When locked in gear, the clutch acts as a solid mechanical coupling.
+      // Driveline torque is produced directly by engine combustion & idle governor minus internal engine friction.
+      const availableTorque = this.engine.getAvailableTorque(engineState.rpm);
+      const effectiveThrottle = clamp(input.throttle, 0, 1);
+      const combustionTorque = effectiveThrottle * availableTorque;
+
+      let idleGovernorTorque = 0.0;
+      if (effectiveThrottle < 0.1 && engineState.rpm < this.config.engine.idleRpm * 1.15) {
+        const rpmDeficit = this.config.engine.idleRpm - engineState.rpm;
+        if (rpmDeficit > 0) {
+          idleGovernorTorque = Math.min(65, rpmDeficit * 0.18);
+        }
+      }
+
+      const engineBraking = this.engine.getEngineBrakingTorque(engineState.rpm);
+      transInputTorque = combustionTorque + idleGovernorTorque - engineBraking;
+
+      // In locked mode, synchronize engine RPM with transmission input shaft RPM directly
+      this.engine.setLockedRpm(transState.inputShaftRpm);
+    } else {
+      // Slipping or neutral mode: clutch load torque acts on free flywheel
+      this.engine.update(input.throttle, clutchState.slipTorque, dt, input.isStarterEngaged);
+    }
+
+    // 5. Update transmission driveline torque transfer with wheel angular speed
+    this.transmission.update(transInputTorque, currentWheelSpeed);
+
+    // 6. Update vehicle longitudinal dynamics with drive torque, brakes, and steering
+    this.vehicle.update(
+      this.transmission.getState().wheelTorque,
+      input.brake,
+      input.parkingBrake,
+      dt,
+      input.steering
+    );
+
+    // 7. Pass updated wheel speed back to transmission to ensure closed-loop driveline mechanics
+    const updatedWheelSpeed = this.vehicle.getState().speed / this.config.wheelRadius;
+    this.transmission.update(transInputTorque, updatedWheelSpeed);
+
+    // If clutch is locked, keep engine RPM synchronized with the updated driveline speed
+    if (clutchState.isLocked && !isNeutral) {
+      this.engine.setLockedRpm(this.transmission.getState().inputShaftRpm);
+    }
   }
 
-  public getState(controls?: InputState): VehicleState {
-    const defaultControls: InputState = {
-      throttle: 0.0,
-      brake: 0.0,
-      clutch: 0.0,
-      steering: 0.0,
-      gear: 0,
-      parkingBrake: true,
-      isStarterEngaged: false,
-    };
+  /**
+   * Set road gradient in radians (positive = uphill, negative = downhill)
+   */
+  public setGrade(grade: number): void {
+    this.vehicle.setGrade(grade);
+  }
 
+  /**
+   * Return a snapshot of the full vehicle simulation state
+   */
+  public getState(controls?: InputState): VehicleState {
     return {
       timestamp: Date.now(),
       engine: this.engine.getState(),
       clutch: this.clutch.getState(),
       transmission: this.transmission.getState(),
       dynamics: this.vehicle.getState(),
-      controls: controls || defaultControls,
+      controls: controls || { ...this.lastInput },
     };
+  }
+
+  public getEngine(): EngineModel {
+    return this.engine;
+  }
+
+  public getClutch(): ClutchModel {
+    return this.clutch;
+  }
+
+  public getTransmission(): TransmissionModel {
+    return this.transmission;
+  }
+
+  public getVehicle(): VehicleDynamicsModel {
+    return this.vehicle;
+  }
+
+  public getConfig(): VehicleConfig {
+    return this.config;
   }
 
   public reset(): void {

@@ -1,160 +1,176 @@
 'use client';
 
+import React from 'react';
 import Link from 'next/link';
 import { useSimulatorStore } from '@/stores/simulatorStore';
+import { useKeyboardControls } from '@/components/controls/useKeyboardControls';
+import { Dashboard } from '@/components/dashboard/Dashboard';
 
 export default function SimulatorPage() {
-  const { vehicleState, isPaused, togglePause, reset } = useSimulatorStore();
-  const { engine, transmission, dynamics, controls } = vehicleState;
+  const { resetSimulation, setGrade, resumeAudio } = useKeyboardControls();
+  const { vehicleState, isPaused, togglePause, isMuted, toggleMute } = useSimulatorStore();
+  const { dynamics } = vehicleState;
+
+  // Grade in percentage for UI state matching
+  const currentGradePct = Math.round(Math.tan(dynamics.grade) * 100);
+
+  const handleToggleMute = () => {
+    resumeAudio();
+    toggleMute();
+  };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col p-4 sm:p-6">
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col p-4 sm:p-6 lg:p-8">
       {/* Top Header */}
-      <header className="flex items-center justify-between border-b border-slate-800 pb-4 mb-6">
+      <header className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800 pb-4 mb-6 max-w-5xl w-full mx-auto">
         <div>
-          <h1 className="text-xl font-bold tracking-tight">Manual Driving Trainer</h1>
-          <p className="text-xs text-slate-400">Free Drive Mode — Phase 1 Foundation</p>
+          <div className="flex items-center gap-2">
+            <span className="h-2.5 w-2.5 rounded-full bg-emerald-500 animate-pulse" />
+            <h1 className="text-xl sm:text-2xl font-bold tracking-tight">Manual Driving Trainer</h1>
+          </div>
+          <p className="text-xs text-slate-400 mt-0.5">
+            Free Drive Simulation — Powertrain, Clutch Friction & Dynamics Active
+          </p>
         </div>
-        <div className="flex items-center gap-3">
+
+        <div className="flex items-center gap-2.5">
+          <button
+            onClick={handleToggleMute}
+            className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition border flex items-center gap-1.5 ${
+              isMuted
+                ? 'bg-rose-950/40 text-rose-300 border-rose-800/50 hover:bg-rose-900/40'
+                : 'bg-emerald-950/40 text-emerald-300 border-emerald-800/50 hover:bg-emerald-900/40'
+            }`}
+            title={isMuted ? 'Unmute Audio' : 'Mute Audio'}
+          >
+            <span>{isMuted ? '🔇 Audio Muted' : '🔊 Audio Active'}</span>
+          </button>
+
           <button
             onClick={togglePause}
-            className="px-3 py-1.5 text-xs font-medium rounded-lg bg-slate-800 hover:bg-slate-700 transition"
+            className={`px-3.5 py-1.5 text-xs font-semibold rounded-lg transition border ${
+              isPaused
+                ? 'bg-amber-500/20 text-amber-300 border-amber-500/50 hover:bg-amber-500/30'
+                : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'
+            }`}
           >
-            {isPaused ? 'Resume (ESC)' : 'Pause (ESC)'}
+            {isPaused ? '▶ Resume (ESC)' : '⏸ Pause (ESC)'}
           </button>
+
           <button
-            onClick={reset}
-            className="px-3 py-1.5 text-xs font-medium rounded-lg bg-red-950/60 text-red-300 border border-red-800/40 hover:bg-red-900/60 transition"
+            onClick={resetSimulation}
+            className="px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-rose-950/60 text-rose-300 border border-rose-800/50 hover:bg-rose-900/60 transition"
           >
             Reset Vehicle
           </button>
+
           <Link
             href="/"
-            className="px-3 py-1.5 text-xs font-medium rounded-lg bg-slate-900 border border-slate-800 hover:bg-slate-800 text-slate-300 transition"
+            className="px-3.5 py-1.5 text-xs font-medium rounded-lg bg-slate-900 border border-slate-800 hover:bg-slate-800 text-slate-300 transition"
           >
             Home
           </Link>
         </div>
       </header>
 
-      {/* Main Dashboard Area */}
-      <main className="flex-1 flex flex-col items-center justify-center max-w-4xl w-full mx-auto space-y-6">
-        {/* Core Readouts */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 w-full">
-          {/* Speed */}
-          <div className="p-4 rounded-xl bg-slate-900/90 border border-slate-800 text-center">
-            <div className="text-xs uppercase text-slate-400 tracking-wider">Speed</div>
-            <div className="text-3xl font-mono font-bold text-white mt-1">
-              {dynamics.speedKmh.toFixed(0)}
-            </div>
-            <div className="text-[10px] text-slate-500 uppercase mt-0.5">km/h</div>
+      {/* Main Simulation Area */}
+      <main className="flex-1 flex flex-col items-center justify-center max-w-5xl w-full mx-auto space-y-6">
+        {/* Road Grade / Hill Start Environment Selector */}
+        <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 rounded-2xl bg-slate-900/80 border border-slate-800 w-full text-xs shadow-md">
+          <div className="flex items-center gap-2.5 text-slate-300">
+            <span className="font-semibold text-slate-200">Road Gradient:</span>
+            <span className="font-mono text-cyan-400 font-bold bg-slate-950 px-2 py-0.5 rounded border border-slate-800">
+              {currentGradePct}% Incline
+            </span>
+            <span className="text-slate-500 text-[11px] hidden sm:inline">
+              {dynamics.grade === 0 ? '(Level road)' : '(Gravity rollback active on slope)'}
+            </span>
           </div>
 
-          {/* RPM */}
-          <div className="p-4 rounded-xl bg-slate-900/90 border border-slate-800 text-center">
-            <div className="text-xs uppercase text-slate-400 tracking-wider">Tachometer</div>
-            <div className="text-3xl font-mono font-bold text-emerald-400 mt-1">
-              {engine.rpm.toFixed(0)}
-            </div>
-            <div className="text-[10px] text-slate-500 uppercase mt-0.5">RPM</div>
-          </div>
-
-          {/* Gear */}
-          <div className="p-4 rounded-xl bg-slate-900/90 border border-slate-800 text-center">
-            <div className="text-xs uppercase text-slate-400 tracking-wider">Gear</div>
-            <div className="text-3xl font-mono font-bold text-cyan-400 mt-1">
-              {transmission.currentGear === -1
-                ? 'R'
-                : transmission.currentGear === 0
-                ? 'N'
-                : transmission.currentGear}
-            </div>
-            <div className="text-[10px] text-slate-500 uppercase mt-0.5">Transmission</div>
-          </div>
-
-          {/* Engine Status */}
-          <div className="p-4 rounded-xl bg-slate-900/90 border border-slate-800 text-center">
-            <div className="text-xs uppercase text-slate-400 tracking-wider">Engine</div>
-            <div
-              className={`text-xl font-bold mt-2 ${
-                engine.status === 'RUNNING'
-                  ? 'text-emerald-400'
-                  : engine.status === 'STALLED'
-                  ? 'text-red-400'
-                  : 'text-slate-400'
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setGrade(0)}
+              className={`px-3 py-1 rounded-lg font-medium transition ${
+                currentGradePct === 0
+                  ? 'bg-emerald-600 text-white shadow-sm'
+                  : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
               }`}
             >
-              {engine.status}
-            </div>
-            <div className="text-[10px] text-slate-500 uppercase mt-1">
-              {controls.parkingBrake ? 'Handbrake ON' : 'Handbrake OFF'}
-            </div>
+              Flat (0%)
+            </button>
+            <button
+              onClick={() => setGrade(6)}
+              className={`px-3 py-1 rounded-lg font-medium transition ${
+                currentGradePct === 6
+                  ? 'bg-amber-600 text-white shadow-sm'
+                  : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+              }`}
+            >
+              Gentle Hill (6%)
+            </button>
+            <button
+              onClick={() => setGrade(12)}
+              className={`px-3 py-1 rounded-lg font-medium transition ${
+                currentGradePct === 12
+                  ? 'bg-red-600 text-white shadow-sm'
+                  : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+              }`}
+            >
+              Steep Hill (12%)
+            </button>
           </div>
         </div>
 
-        {/* Pedal Travel Gauges (Placeholder Preview) */}
-        <div className="p-5 rounded-xl bg-slate-900 border border-slate-800 w-full space-y-4">
-          <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
-            Virtual Pedals & Timed Controls (Phase 2 Preview)
-          </div>
-
-          <div className="grid grid-cols-3 gap-4">
-            {/* Clutch */}
-            <div className="space-y-1.5">
-              <div className="flex justify-between text-xs text-slate-300">
-                <span>Clutch (Space)</span>
-                <span className="font-mono">{(controls.clutch * 100).toFixed(0)}%</span>
-              </div>
-              <div className="h-3 w-full bg-slate-800 rounded-full overflow-hidden relative">
-                {/* Bite point marker */}
-                <div className="absolute left-[40%] w-[25%] h-full bg-amber-500/20 border-x border-amber-500/40" />
-                <div
-                  className="h-full bg-amber-400 rounded-full transition-all duration-75"
-                  style={{ width: `${controls.clutch * 100}%` }}
-                />
-              </div>
-              <div className="text-[10px] text-amber-500/80">Bite Zone: 40% - 65%</div>
-            </div>
-
-            {/* Brake */}
-            <div className="space-y-1.5">
-              <div className="flex justify-between text-xs text-slate-300">
-                <span>Brake (S)</span>
-                <span className="font-mono">{(controls.brake * 100).toFixed(0)}%</span>
-              </div>
-              <div className="h-3 w-full bg-slate-800 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-red-400 rounded-full transition-all duration-75"
-                  style={{ width: `${controls.brake * 100}%` }}
-                />
-              </div>
-            </div>
-
-            {/* Throttle */}
-            <div className="space-y-1.5">
-              <div className="flex justify-between text-xs text-slate-300">
-                <span>Throttle (W)</span>
-                <span className="font-mono">{(controls.throttle * 100).toFixed(0)}%</span>
-              </div>
-              <div className="h-3 w-full bg-slate-800 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-emerald-400 rounded-full transition-all duration-75"
-                  style={{ width: `${controls.throttle * 100}%` }}
-                />
-              </div>
-            </div>
-          </div>
-        </div>
+        {/* Cohesive Automotive Instrument Cluster */}
+        <Dashboard state={vehicleState} />
 
         {/* Controls Cheatsheet */}
-        <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 text-xs text-slate-400 w-full flex flex-wrap justify-between gap-2">
-          <span><strong className="text-slate-200">W:</strong> Throttle</span>
-          <span><strong className="text-slate-200">S:</strong> Brake</span>
-          <span><strong className="text-slate-200">Space:</strong> Clutch</span>
-          <span><strong className="text-slate-200">E/Q:</strong> Shift Up/Down</span>
-          <span><strong className="text-slate-200">N:</strong> Neutral</span>
-          <span><strong className="text-slate-200">R:</strong> Reverse</span>
-          <span><strong className="text-slate-200">P:</strong> Handbrake</span>
+        <div className="p-4 rounded-2xl bg-slate-900/60 border border-slate-800/80 text-xs text-slate-400 w-full shadow-lg">
+          <div className="text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-2.5">
+            Manual Controls Cheatsheet
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2.5">
+            <div className="bg-slate-950/60 p-2 rounded-lg border border-slate-800/60">
+              <kbd className="px-1.5 py-0.5 bg-slate-800 rounded font-mono text-slate-200 font-bold">W</kbd>
+              <span className="ml-2 text-slate-300">Throttle</span>
+            </div>
+            <div className="bg-slate-950/60 p-2 rounded-lg border border-slate-800/60">
+              <kbd className="px-1.5 py-0.5 bg-slate-800 rounded font-mono text-slate-200 font-bold">S</kbd>
+              <span className="ml-2 text-slate-300">Foot Brake</span>
+            </div>
+            <div className="bg-slate-950/60 p-2 rounded-lg border border-slate-800/60">
+              <kbd className="px-1.5 py-0.5 bg-slate-800 rounded font-mono text-amber-300 font-bold">Space</kbd>
+              <span className="ml-2 text-slate-300">Clutch</span>
+            </div>
+            <div className="bg-slate-950/60 p-2 rounded-lg border border-slate-800/60">
+              <kbd className="px-1.5 py-0.5 bg-slate-800 rounded font-mono text-cyan-300 font-bold">A / D</kbd>
+              <span className="ml-2 text-slate-300">Steering</span>
+            </div>
+            <div className="bg-slate-950/60 p-2 rounded-lg border border-slate-800/60">
+              <kbd className="px-1.5 py-0.5 bg-slate-800 rounded font-mono text-slate-200 font-bold">E / Q</kbd>
+              <span className="ml-2 text-slate-300">Shift Up / Down</span>
+            </div>
+            <div className="bg-slate-950/60 p-2 rounded-lg border border-slate-800/60">
+              <kbd className="px-1.5 py-0.5 bg-slate-800 rounded font-mono text-teal-300 font-bold">N</kbd>
+              <span className="ml-2 text-slate-300">Neutral</span>
+            </div>
+            <div className="bg-slate-950/60 p-2 rounded-lg border border-slate-800/60">
+              <kbd className="px-1.5 py-0.5 bg-slate-800 rounded font-mono text-rose-300 font-bold">R</kbd>
+              <span className="ml-2 text-slate-300">Reverse</span>
+            </div>
+            <div className="bg-slate-950/60 p-2 rounded-lg border border-slate-800/60">
+              <kbd className="px-1.5 py-0.5 bg-slate-800 rounded font-mono text-rose-300 font-bold">P</kbd>
+              <span className="ml-2 text-slate-300">Handbrake</span>
+            </div>
+            <div className="bg-slate-950/60 p-2 rounded-lg border border-slate-800/60">
+              <kbd className="px-1.5 py-0.5 bg-slate-800 rounded font-mono text-amber-300 font-bold">Hold I</kbd>
+              <span className="ml-2 text-slate-300">Starter Crank</span>
+            </div>
+            <div className="bg-slate-950/60 p-2 rounded-lg border border-slate-800/60">
+              <kbd className="px-1.5 py-0.5 bg-slate-800 rounded font-mono text-slate-300 font-bold">ESC</kbd>
+              <span className="ml-2 text-slate-300">Pause</span>
+            </div>
+          </div>
         </div>
       </main>
     </div>
