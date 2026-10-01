@@ -19,8 +19,6 @@ Use:
 * TypeScript
 * Tailwind CSS
 * Zustand
-* Vitest
-* Playwright
 * Supabase
 * PostgreSQL
 * Web Audio API
@@ -483,6 +481,8 @@ The simulator must still work if audio is disabled.
 
 Use Supabase for persistence only.
 
+The backend is Supabase, and you can query and manage Supabase directly in this environment using the `npx supabase` command. The project reference is already set up and configured on this laptop (e.g. for generating TypeScript types via `npx supabase gen types typescript`, running migrations, or executing queries).
+
 Potential data:
 
 * User profile
@@ -524,8 +524,7 @@ manual-driving-trainer/
 │   ├── frontend-agent.md
 │   ├── controls-agent.md
 │   ├── audio-agent.md
-│   ├── backend-agent.md
-│   └── qa-agent.md
+│   └── backend-agent.md
 │
 ├── docs/
 │   ├── main.md
@@ -567,11 +566,6 @@ manual-driving-trainer/
 │
 ├── stores/
 │   └── simulatorStore.ts
-│
-├── tests/
-│   ├── physics/
-│   ├── controls/
-│   └── e2e/
 │
 ├── public/
 │   └── audio/
@@ -623,8 +617,6 @@ lib/simulation/transmission.ts
 lib/simulation/vehicle.ts
 lib/simulation/physics.ts
 lib/simulation/simulation.ts
-
-tests/physics/
 ```
 
 Responsible for:
@@ -684,7 +676,6 @@ Own:
 ```text
 lib/simulation/controls.ts
 components/controls/
-tests/controls/
 ```
 
 Responsible for:
@@ -733,56 +724,20 @@ Own:
 lib/supabase/
 ```
 
+Supabase is the backend for this application. The Backend Agent should query and manage the database directly by using `npx supabase` (e.g. executing queries, inspecting schema, running migrations, and generating types). The project reference is already set up and linked on this laptop.
+
 Responsible for:
 
+* Supabase database queries and management via `npx supabase`
 * Authentication
 * User profiles
 * Session persistence
 * Progress
 * Statistics
 * Settings
+* Schema migrations and type generation (`npx supabase gen types typescript`)
 
 Supabase must never be required for the real-time simulator.
-
----
-
-## QA Agent
-
-Own:
-
-```text
-tests/
-```
-
-Responsible for testing:
-
-* Physics
-* Controls
-* Simulation integration
-* UI
-* End-to-end user flows
-
-Use:
-
-* Vitest
-* Playwright
-
-Important tests include:
-
-* Engine idle
-* Engine acceleration
-* Engine stall
-* Clutch bite point
-* Clutch release
-* Gear shifting
-* Braking
-* Hill start
-* Reverse
-* Keyboard ramping
-* Steering
-* Free Drive
-
-Do not modify production logic simply to make tests pass.
 
 ---
 
@@ -850,29 +805,7 @@ Keep all tunable parameters centralized.
 
 ---
 
-# 19. Testing Philosophy
-
-The physics engine must be testable without React.
-
-For example:
-
-```text
-create simulation
-      ↓
-apply input
-      ↓
-advance simulation
-      ↓
-assert vehicle state
-```
-
-Avoid tests that depend on real-time browser rendering when unit testing physics.
-
-Test deterministic behavior.
-
----
-
-# 20. Development Order
+# 19. Development Order
 
 Do not build everything at once.
 
@@ -886,8 +819,6 @@ Project setup:
 * TypeScript
 * Tailwind
 * Zustand
-* Vitest
-* Playwright
 * Folder structure
 * Documentation
 * Agent instructions
@@ -981,7 +912,7 @@ Lessons and progress
 
 ---
 
-# 21. Critical Architectural Rules
+# 20. Critical Architectural Rules
 
 These rules must be respected throughout the project.
 
@@ -1007,7 +938,7 @@ These rules must be respected throughout the project.
 
 11. Keep the simulation renderer-independent.
 
-12. Build and test the physics before building advanced UI.
+12. Build and verify the physics before building advanced UI.
 
 13. Do not over-engineer the first version.
 
@@ -1017,7 +948,7 @@ These rules must be respected throughout the project.
 
 ---
 
-# 22. First Task
+# 21. First Task
 
 For this first task, DO NOT build the complete simulator.
 
@@ -1030,14 +961,11 @@ Instead:
 5. Create all `.agents/*.md` files.
 6. Create the initial TypeScript interfaces/types.
 7. Create placeholder simulation modules.
-8. Configure Vitest.
-9. Configure Playwright.
-10. Create a minimal homepage.
-11. Create a minimal `/simulator` route.
-12. Make sure the project runs successfully.
-13. Make sure TypeScript passes.
-14. Make sure the initial test suite runs.
-15. Provide a concise summary of what was created.
+8. Create a minimal homepage.
+9. Create a minimal `/simulator` route.
+10. Make sure the project runs successfully.
+11. Make sure TypeScript passes.
+12. Provide a concise summary of what was created.
 
 Do NOT implement the complete physics engine yet.
 
