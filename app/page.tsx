@@ -12,7 +12,7 @@ export default function Home() {
             Manual Driving Trainer
           </h1>
           <p className="text-slate-400 text-base sm:text-lg">
-            Master the clutch, throttle balance, bite point, and gear selection in a realistic 2D longitudinal vehicle simulator.
+            Master the clutch,, throttle balance, bite point, and gear selection in a realistic 2D longitudinal vehicle simulator.
           </p>
         </div>
 
