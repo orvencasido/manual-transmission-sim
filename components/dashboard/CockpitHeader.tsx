@@ -17,6 +17,7 @@ export interface CockpitHeaderProps {
   backHref?: string;
   backLabel?: string;
   elapsedSeconds?: number;
+  showMapLink?: boolean;
   className?: string;
 }
 
@@ -33,6 +34,7 @@ export function CockpitHeader({
   backHref = '/',
   backLabel = 'Home',
   elapsedSeconds,
+  showMapLink = true,
   className = '',
 }: CockpitHeaderProps) {
   // If elapsedSeconds is not provided, manage an internal stopwatch
@@ -122,6 +124,19 @@ export function CockpitHeader({
           <span className="text-slate-500 text-[10px] uppercase font-sans font-semibold">Session</span>
           <span className="text-cyan-400 font-bold tracking-wider">{formattedTime}</span>
         </div>
+
+        {/* Prominent Street Map Driving Route Link */}
+        {showMapLink && (
+          <Link
+            href="/map"
+            className="px-3 py-1.5 text-xs font-semibold rounded-xl bg-cyan-950/60 text-cyan-300 border border-cyan-800/60 hover:bg-cyan-900/70 hover:border-cyan-700 transition flex items-center gap-1.5 shadow-lg shadow-cyan-950/30"
+            title="Switch to 2D Top-Down OpenStreetMap Driving Simulator"
+          >
+            <span>🗺️</span>
+            <span className="hidden md:inline font-bold">Street Map Driving</span>
+            <span className="md:hidden">Map</span>
+          </Link>
+        )}
 
         {/* Audio Toggle */}
         <button

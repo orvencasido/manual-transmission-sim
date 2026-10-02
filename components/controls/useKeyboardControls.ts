@@ -193,6 +193,14 @@ export function useKeyboardControls() {
     audioRef.current?.resume().catch(() => {});
   }, []);
 
+  const setGeoPosition = useCallback((lat: number, lon: number, heading?: number) => {
+    if (simulationRef.current) {
+      simulationRef.current.setGeoPosition(lat, lon, heading);
+      const currentControls = controlsManagerRef.current?.getState();
+      updateVehicleState(simulationRef.current.getState(currentControls));
+    }
+  }, [updateVehicleState]);
+
   return {
     controlsManager: controlsManagerRef.current,
     simulation: simulationRef.current,
@@ -200,5 +208,6 @@ export function useKeyboardControls() {
     resetSimulation,
     setGrade,
     resumeAudio,
+    setGeoPosition,
   };
 }

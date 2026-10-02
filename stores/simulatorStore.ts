@@ -47,6 +47,15 @@ const INITIAL_VEHICLE_STATE: VehicleState = {
     parkingBrake: true,
     isStarterEngaged: false,
   },
+  kinematics: {
+    latitude: 13.9314,
+    longitude: 121.6172,
+    headingDegrees: 0,
+    headingRadians: 0,
+    yawRate: 0,
+    worldX: 0,
+    worldY: 0,
+  },
 };
 
 interface SimulatorStore {

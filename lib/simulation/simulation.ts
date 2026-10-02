@@ -9,6 +9,7 @@ import { EngineModel } from './engine';
 import { ClutchModel } from './clutch';
 import { TransmissionModel } from './transmission';
 import { VehicleDynamicsModel } from './vehicle';
+import { KinematicsModel } from './kinematics';
 
 export class Simulation {
   private config: VehicleConfig;
@@ -16,6 +17,7 @@ export class Simulation {
   private clutch: ClutchModel;
   private transmission: TransmissionModel;
   private vehicle: VehicleDynamicsModel;
+  private kinematics: KinematicsModel;
   private lastInput: InputState = {
     throttle: 0.0,
     brake: 0.0,
@@ -32,6 +34,7 @@ export class Simulation {
     this.clutch = new ClutchModel(config.clutch);
     this.transmission = new TransmissionModel(config.transmission);
     this.vehicle = new VehicleDynamicsModel(config);
+    this.kinematics = new KinematicsModel();
   }
 
   /**
@@ -112,6 +115,9 @@ export class Simulation {
     if (clutchState.isLocked && !isNeutral) {
       this.engine.setLockedRpm(this.transmission.getState().inputShaftRpm);
     }
+
+    // 8. Update 2D kinematic bicycle model and geodetic positioning
+    this.kinematics.update(this.vehicle.getState().speed, input.steering, dt);
   }
 
   /**
@@ -119,6 +125,13 @@ export class Simulation {
    */
   public setGrade(grade: number): void {
     this.vehicle.setGrade(grade);
+  }
+
+  /**
+   * Set vehicle geodetic coordinates and optional heading angle
+   */
+  public setGeoPosition(lat: number, lon: number, headingDegrees?: number): void {
+    this.kinematics.setPosition(lat, lon, headingDegrees);
   }
 
   /**
@@ -132,6 +145,7 @@ export class Simulation {
       transmission: this.transmission.getState(),
       dynamics: this.vehicle.getState(),
       controls: controls || { ...this.lastInput },
+      kinematics: this.kinematics.getState(),
     };
   }
 
@@ -151,6 +165,10 @@ export class Simulation {
     return this.vehicle;
   }
 
+  public getKinematics(): KinematicsModel {
+    return this.kinematics;
+  }
+
   public getConfig(): VehicleConfig {
     return this.config;
   }
@@ -160,5 +178,6 @@ export class Simulation {
     this.clutch.reset();
     this.transmission.reset();
     this.vehicle.reset();
+    this.kinematics.reset();
   }
 }
