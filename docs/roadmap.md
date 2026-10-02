@@ -105,10 +105,14 @@ Phase 11: Driving Lessons & Curriculum
 * Adjust biquad filters and wave-shaping distortion based on throttle load.
 * Synthesize starter motor cranking, stall click, and gear engagement clicks.
 
-### Phase 10: Supabase Persistence
-* Configure Supabase client in `lib/supabase/client.ts`.
-* Apply database migrations via `npx supabase` (sessions, stall tallies, user driving stats).
-* Asynchronously save session metrics when the driver resets or ends a drive session.
+### Phase 10: Supabase Persistence (Completed)
+* [x] Configure Supabase client in `lib/supabase/client.ts`.
+* [x] Apply database migrations via `npx supabase` (`profiles`, `driving_sessions`, `lesson_progress` with RLS).
+* [x] Synchronized schema types in `lib/supabase/types.ts`.
+* [x] Robust, fail-safe query helpers in `lib/supabase/queries.ts`.
+* [x] Asynchronously save session metrics when the driver resets or ends a drive session.
+* [x] Dual-write and background sync for lesson curriculum progress.
+* [x] Driver Statistics & Progress telemetry dashboard in `app/progress/page.tsx`.
 
 ### Phase 11: Driving Lessons & Curriculum
 * Create guided lesson modules in `app/lessons/`:

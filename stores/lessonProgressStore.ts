@@ -1,4 +1,8 @@
 import { create } from 'zustand';
+import {
+  saveLessonProgress,
+  fetchLessonProgress,
+} from '@/lib/supabase/queries';
 
 export interface LessonProgress {
   lessonId: number;
@@ -25,6 +29,7 @@ interface LessonProgressStore {
   ) => void;
   getRecord: (lessonId: number) => LessonProgress | undefined;
   isUnlocked: (lessonId: number) => boolean;
+  syncFromSupabase: () => Promise<void>;
   resetAll: () => void;
 }
 
@@ -81,6 +86,20 @@ export const useLessonProgressStore = create<LessonProgressStore>((set, get) => 
       };
 
       persistRecords(newRecords);
+
+      // Asynchronously sync to Supabase (isolated, non-blocking)
+      saveLessonProgress({
+        lessonId,
+        completed: true,
+        stars: updatedRecord.stars,
+        smoothnessScore: updatedRecord.smoothnessScore,
+        stalls: updatedRecord.stalls,
+        bestTimeSeconds: updatedRecord.bestTimeSeconds,
+        maxRollbackMeters: updatedRecord.maxRollbackMeters,
+      }).catch((err) => {
+        console.warn('Background Supabase lesson sync skipped:', err);
+      });
+
       return { records: newRecords };
     });
   },
@@ -92,6 +111,39 @@ export const useLessonProgressStore = create<LessonProgressStore>((set, get) => 
     const prev = get().records[lessonId - 1];
     return prev ? prev.completed : false;
   },
+  syncFromSupabase: async () => {
+    try {
+      const { data } = await fetchLessonProgress();
+      if (data && data.length > 0) {
+        set((state) => {
+          const merged = { ...state.records };
+          for (const row of data) {
+            const current = merged[row.lesson_id];
+            if (
+              !current ||
+              row.stars > current.stars ||
+              (row.stars === current.stars && row.smoothness_score >= current.smoothnessScore)
+            ) {
+              merged[row.lesson_id] = {
+                lessonId: row.lesson_id,
+                completed: row.completed,
+                stars: row.stars,
+                smoothnessScore: row.smoothness_score,
+                stalls: row.stalls,
+                maxRollbackMeters: row.max_rollback_meters,
+                bestTimeSeconds: row.best_time_seconds,
+                completedAt: row.updated_at,
+              };
+            }
+          }
+          persistRecords(merged);
+          return { records: merged };
+        });
+      }
+    } catch (err) {
+      console.warn('Supabase lesson sync failed silently:', err);
+    }
+  },
   resetAll: () => {
     if (typeof window !== 'undefined') {
       try {
@@ -102,8 +154,13 @@ export const useLessonProgressStore = create<LessonProgressStore>((set, get) => 
   },
 }));
 
-// Initialize from localStorage on client-side
+// Initialize from localStorage on client-side and trigger background sync
 if (typeof window !== 'undefined') {
   const loaded = loadSavedRecords();
   useLessonProgressStore.setState({ records: loaded });
+
+  // Non-blocking background sync from Supabase if online
+  setTimeout(() => {
+    useLessonProgressStore.getState().syncFromSupabase().catch(() => {});
+  }, 200);
 }

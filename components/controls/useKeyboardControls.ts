@@ -6,6 +6,7 @@ import { Simulation } from '@/lib/simulation/simulation';
 import { InstructorEvaluator } from '@/components/instructor/instructorEvaluator';
 import { EngineAudioSystem } from '@/lib/audio/engineAudio';
 import { useSimulatorStore } from '@/stores/simulatorStore';
+import { saveDrivingSession } from '@/lib/supabase/queries';
 
 const FIXED_DT = 1 / 120; // 120 Hz physics tick
 const MAX_FRAME_TIME = 0.1; // Clamp frame spikes
@@ -19,6 +20,14 @@ export function useKeyboardControls() {
   const lastTimeRef = useRef<number>(0);
   const accumulatorRef = useRef<number>(0);
 
+  // Session telemetry refs (for async persistence on reset/exit)
+  const sessionStartTimeRef = useRef<number>(Date.now());
+  const sessionStallsRef = useRef<number>(0);
+  const sessionSmoothStartsRef = useRef<number>(0);
+  const sessionMaxSpeedRef = useRef<number>(0);
+  const sessionDistanceRef = useRef<number>(0);
+  const lastEngineStatusRef = useRef<string>('OFF');
+
   const { updateVehicleState, togglePause, setActiveFeedback, addFeedback } = useSimulatorStore();
 
   useEffect(() => {
@@ -26,7 +35,7 @@ export function useKeyboardControls() {
       onPauseToggle: () => togglePause(),
     });
     controlsManagerRef.current = manager;
-    manager.attach();
+    manager.attach(typeof window !== 'undefined' ? window : undefined, { passive: false });
 
     const simulation = new Simulation();
     simulationRef.current = simulation;
@@ -44,7 +53,7 @@ export function useKeyboardControls() {
     const unlockAudio = () => {
       audio.resume().catch(() => {});
     };
-    window.addEventListener('keydown', unlockAudio, { passive: true });
+    window.addEventListener('keydown', unlockAudio, { passive: false });
     window.addEventListener('pointerdown', unlockAudio, { passive: true });
 
 
@@ -88,7 +97,26 @@ export function useKeyboardControls() {
         const activeFeedbacks = evaluatorRef.current.evaluate(stateSnapshot, frameTime);
         const primaryFeedback = activeFeedbacks.length > 0 ? activeFeedbacks[0] : null;
         setActiveFeedback(primaryFeedback);
+
+        // Track smooth start feedback events
+        if (primaryFeedback?.id === 'FEEDBACK_SMOOTH_START') {
+          sessionSmoothStartsRef.current += 1;
+        }
       }
+
+      // Track session metrics in memory (pure numerical updates, NO db calls in loop)
+      if (
+        stateSnapshot.engine.status === 'STALLED' &&
+        lastEngineStatusRef.current !== 'STALLED'
+      ) {
+        sessionStallsRef.current += 1;
+      }
+      lastEngineStatusRef.current = stateSnapshot.engine.status;
+
+      if (stateSnapshot.dynamics.speedKmh > sessionMaxSpeedRef.current) {
+        sessionMaxSpeedRef.current = stateSnapshot.dynamics.speedKmh;
+      }
+      sessionDistanceRef.current = stateSnapshot.dynamics.distanceTraveled;
 
       animFrameRef.current = requestAnimationFrame(loop);
     };
@@ -103,10 +131,53 @@ export function useKeyboardControls() {
       window.removeEventListener('pointerdown', unlockAudio);
       manager.detach();
       audio.destroy();
+
+      // Asynchronously flush session summary on unmount if meaningful activity occurred
+      const durationSeconds = (Date.now() - sessionStartTimeRef.current) / 1000;
+      if (
+        durationSeconds >= 5 &&
+        (sessionDistanceRef.current >= 5 || sessionStallsRef.current > 0)
+      ) {
+        saveDrivingSession({
+          durationSeconds,
+          stallCount: sessionStallsRef.current,
+          smoothStarts: sessionSmoothStartsRef.current,
+          maxSpeedKmh: sessionMaxSpeedRef.current,
+          distanceMeters: sessionDistanceRef.current,
+        }).catch((err) => {
+          console.warn('Background session flush skipped:', err);
+        });
+      }
     };
   }, [updateVehicleState, togglePause, setActiveFeedback, addFeedback]);
 
   const resetSimulation = useCallback(() => {
+    // 1. Flush previous session stats asynchronously to Supabase
+    const durationSeconds = (Date.now() - sessionStartTimeRef.current) / 1000;
+    if (
+      durationSeconds >= 3 &&
+      (sessionDistanceRef.current >= 2 || sessionStallsRef.current > 0)
+    ) {
+      saveDrivingSession({
+        durationSeconds,
+        stallCount: sessionStallsRef.current,
+        smoothStarts: sessionSmoothStartsRef.current,
+        maxSpeedKmh: sessionMaxSpeedRef.current,
+        distanceMeters: sessionDistanceRef.current,
+      }).catch((err) => {
+        console.warn('Background session save skipped:', err);
+      });
+    }
+
+    // 2. Reset session telemetry timers
+    sessionStartTimeRef.current = Date.now();
+    sessionStallsRef.current = 0;
+    sessionSmoothStartsRef.current = 0;
+    sessionMaxSpeedRef.current = 0;
+    sessionDistanceRef.current = 0;
+    lastEngineStatusRef.current = 'OFF';
+
+    // 3. Reset physics simulation components
     controlsManagerRef.current?.reset();
     simulationRef.current?.reset();
     evaluatorRef.current?.reset();

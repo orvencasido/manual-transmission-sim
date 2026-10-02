@@ -69,14 +69,14 @@ export class ControlsManager {
   /**
    * Attach keyboard listeners to window or container
    */
-  public attach(target?: Window | HTMLElement): void {
+  public attach(target?: Window | HTMLElement, options: AddEventListenerOptions = { passive: false }): void {
     if (this.isAttached) return;
 
     const eventTarget = target || (typeof window !== 'undefined' ? window : null);
     if (!eventTarget) return;
 
-    eventTarget.addEventListener('keydown', this.boundKeyDown as EventListener);
-    eventTarget.addEventListener('keyup', this.boundKeyUp as EventListener);
+    eventTarget.addEventListener('keydown', this.boundKeyDown as EventListener, options);
+    eventTarget.addEventListener('keyup', this.boundKeyUp as EventListener, options);
     this.isAttached = true;
   }
 
@@ -120,14 +120,21 @@ export class ControlsManager {
   /**
    * Handle keydown event
    */
-  public handleKeyDown(e: KeyboardEvent | { key: string; code?: string; target?: unknown }): void {
+  public handleKeyDown(e: KeyboardEvent | { key: string; code?: string; target?: unknown; preventDefault?: () => void }): void {
     // Ignore input if user is typing in a form field
-    const target = e.target as HTMLElement | undefined;
+    const target = (e as { target?: unknown }).target as HTMLElement | undefined;
     if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
       return;
     }
 
     const key = this.normalizeKey(e.key, e.code);
+
+    if (key === 'space') {
+      if ('preventDefault' in e && typeof e.preventDefault === 'function') {
+        e.preventDefault();
+      }
+    }
+
     this.activeKeys.add(key);
 
     // Discrete edge-triggered actions (fire once per press until released)
@@ -140,8 +147,20 @@ export class ControlsManager {
   /**
    * Handle keyup event
    */
-  public handleKeyUp(e: KeyboardEvent | { key: string; code?: string }): void {
+  public handleKeyUp(e: KeyboardEvent | { key: string; code?: string; target?: unknown; preventDefault?: () => void }): void {
+    const target = (e as { target?: unknown }).target as HTMLElement | undefined;
+    if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
+      return;
+    }
+
     const key = this.normalizeKey(e.key, e.code);
+
+    if (key === 'space') {
+      if ('preventDefault' in e && typeof e.preventDefault === 'function') {
+        e.preventDefault();
+      }
+    }
+
     this.activeKeys.delete(key);
     this.processedDiscreteKeys.delete(key);
 
