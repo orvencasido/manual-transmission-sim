@@ -31,7 +31,7 @@ interface LocationToast {
 
 export default function StreetMapDrivingPage() {
   const { resetSimulation, setGrade, resumeAudio, setGeoPosition, setBoundaryMode } =
-    useKeyboardControls();
+    useKeyboardControls({ defaultBoundaryMode: 'strict' });
   const { vehicleState, activeFeedback, isPaused, togglePause, isMuted, toggleMute } =
     useSimulatorStore();
 
@@ -144,6 +144,13 @@ export default function StreetMapDrivingPage() {
     });
   };
 
+  const handleMapTeleport = useCallback(
+    (lat: number, lon: number, heading?: number) => {
+      setGeoPosition(lat, lon, heading);
+    },
+    [setGeoPosition]
+  );
+
   return (
     <AuthGuard>
       <div className="relative w-screen h-screen overflow-hidden bg-slate-950 text-slate-100 flex flex-col select-none">
@@ -168,9 +175,6 @@ export default function StreetMapDrivingPage() {
               <h1 className="text-xs sm:text-base font-bold text-slate-100 tracking-tight">
                 Street Map Driving
               </h1>
-              <span className="hidden lg:inline-flex text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 rounded border border-cyan-800/60 bg-cyan-950/40 text-cyan-300 font-semibold">
-                OpenStreetMap 2D
-              </span>
             </div>
           </div>
         </div>
@@ -344,7 +348,7 @@ export default function StreetMapDrivingPage() {
           longitude={vehicleState.kinematics.longitude}
           headingDegrees={vehicleState.kinematics.headingDegrees}
           speedKmh={vehicleState.dynamics.speedKmh}
-          onTeleport={(lat, lon, heading) => setGeoPosition(lat, lon, heading)}
+          onTeleport={handleMapTeleport}
           boundaryMode={vehicleState.kinematics.collision?.boundaryMode ?? 'strict'}
           onBoundaryModeChange={setBoundaryMode}
           collision={vehicleState.kinematics.collision}

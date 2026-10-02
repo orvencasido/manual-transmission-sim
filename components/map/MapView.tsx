@@ -7,7 +7,6 @@ import 'leaflet/dist/leaflet.css';
 import type { RoadBoundaryMode, RoadCollisionState } from '@/lib/simulation/types';
 
 export type MapOrientationMode = 'heading-up' | 'north-up';
-export type MapInteractionMode = 'hover' | 'select';
 
 export interface MapViewProps {
   latitude: number;
@@ -74,7 +73,7 @@ function calculateBearing(
   return (bearing + 360) % 360;
 }
 
-export default function MapView({
+function MapViewComponent({
   latitude,
   longitude,
   headingDegrees,
@@ -94,25 +93,24 @@ export default function MapView({
   const markerRef = useRef<LeafletTypes.Marker | null>(null);
   const polylineRef = useRef<LeafletTypes.Polyline | null>(null);
   const tileLayerRef = useRef<LeafletTypes.TileLayer | null>(null);
+  const carPointerRotatorRef = useRef<HTMLElement | null>(null);
+
   const lastRecordedPosRef = useRef<{ lat: number; lon: number }>({ lat: latitude, lon: longitude });
+  const lastViewPosRef = useRef<{ lat: number; lon: number }>({ lat: latitude, lon: longitude });
+  const breadcrumbCountRef = useRef<number>(0);
+  const pointerDownPosRef = useRef<{ x: number; y: number } | null>(null);
 
   // Unwrapped heading tracker to prevent 360° <-> 0° visual spin glitches
   const continuousHeadingRef = useRef<number>(headingDegrees);
 
   const [orientationMode, setOrientationMode] = useState<MapOrientationMode>(initialOrientation);
-  const [interactionMode, setInteractionMode] = useState<MapInteractionMode>('hover');
-  const [currentBoundaryMode, setCurrentBoundaryMode] = useState<RoadBoundaryMode>(boundaryMode);
   const [showTrail, setShowTrail] = useState(false);
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [isFollowing, setIsFollowing] = useState(true);
   const [zoomLevel, setZoomLevel] = useState(18);
   const [tileTheme, setTileTheme] = useState<TileTheme>('dark');
-  const [breadcrumbCount, setBreadcrumbCount] = useState(0);
   const [isMapReady, setIsMapReady] = useState(false);
-
-  useEffect(() => {
-    setCurrentBoundaryMode(boundaryMode);
-  }, [boundaryMode]);
+  const [teleportPulse, setTeleportPulse] = useState<{ x: number; y: number } | null>(null);
 
   // Keep latest onTeleport in ref
   const onTeleportRef = useRef(onTeleport);
@@ -134,7 +132,7 @@ export default function MapView({
         mapRef.current = null;
       }
 
-      // Initialize map instance without rigid bounding box so worldwide teleporting works seamlessly
+      // Initialize map instance
       const map = L.map(mapContainerRef.current, {
         center: [latitude, longitude],
         zoom: 18,
@@ -144,14 +142,10 @@ export default function MapView({
         attributionControl: false,
       });
 
-      // Enable dragging when in hover mode
-      if (interactionMode === 'hover') {
-        map.dragging.enable();
-      } else {
-        map.dragging.disable();
-      }
+      // Dragging always enabled for natural pan exploration
+      map.dragging.enable();
 
-      // Add Tile Layer with crisp scaling up to zoom 19 (OSM native limit is 18-19)
+      // Add Tile Layer with crisp scaling up to zoom 19
       const themeConfig = TILE_LAYERS[tileTheme];
       const tileLayer = L.tileLayer(themeConfig.url, {
         attribution: themeConfig.attribution,
@@ -169,89 +163,80 @@ export default function MapView({
         })
         .addTo(map);
 
-      // Create Custom SVG Vehicle Marker Icon (Top-View Car)
-      // In Heading-Up mode: wrapper is rotated by -heading, so marker rotated by +heading points straight UP (0° on screen)
-      // In North-Up mode: wrapper is at 0°, so marker rotated by +heading points in heading direction
+      // Create Custom SVG Vehicle Marker Icon (Scaled to 26px x 26px)
       const carIcon = L.divIcon({
         className: 'vehicle-marker-wrapper',
         html: `
-          <div id="car-pointer-root" style="width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; pointer-events: none;">
-            <div id="car-pointer-rotator" style="width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; transform-origin: 24px 24px; transform: rotate(${headingDegrees}deg); will-change: transform;">
-              <svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" style="filter: drop-shadow(0 2px 6px rgba(0,0,0,0.75)) drop-shadow(0 0 10px rgba(6,182,212,0.6));">
+          <div id="car-pointer-root" style="width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; pointer-events: none;">
+            <div id="car-pointer-rotator" style="width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; transform-origin: 13px 13px; transform: rotate(${headingDegrees}deg); will-change: transform;">
+              <svg width="26" height="26" viewBox="0 0 26 26" fill="none" xmlns="http://www.w3.org/2000/svg" style="filter: drop-shadow(0 1px 3px rgba(0,0,0,0.75)) drop-shadow(0 0 4px rgba(6,182,212,0.5));">
                 <defs>
-                  <!-- Metallic Body Gradient -->
-                  <linearGradient id="carBodyGrad" x1="14" y1="6" x2="34" y2="42" gradientUnits="userSpaceOnUse">
+                  <linearGradient id="carBodyGrad" x1="7.8" y1="4" x2="18.2" y2="22.5" gradientUnits="userSpaceOnUse">
                     <stop offset="0%" stop-color="#38bdf8"/>
                     <stop offset="35%" stop-color="#06b6d4"/>
                     <stop offset="75%" stop-color="#0284c7"/>
                     <stop offset="100%" stop-color="#0369a1"/>
                   </linearGradient>
-                  <!-- Tinted Windshield Glass -->
-                  <linearGradient id="glassGrad" x1="24" y1="14" x2="24" y2="36" gradientUnits="userSpaceOnUse">
+                  <linearGradient id="glassGrad" x1="13" y1="8" x2="13" y2="20" gradientUnits="userSpaceOnUse">
                     <stop offset="0%" stop-color="#0b1120"/>
                     <stop offset="100%" stop-color="#1e293b"/>
                   </linearGradient>
-                  <!-- Forward Headlight Cones -->
-                  <linearGradient id="beamGrad" x1="24" y1="8" x2="24" y2="0" gradientUnits="userSpaceOnUse">
-                    <stop offset="0%" stop-color="rgba(254,240,138,0.55)"/>
+                  <linearGradient id="beamGrad" x1="13" y1="5" x2="13" y2="0" gradientUnits="userSpaceOnUse">
+                    <stop offset="0%" stop-color="rgba(254,240,138,0.5)"/>
                     <stop offset="100%" stop-color="rgba(254,240,138,0)"/>
                   </linearGradient>
                 </defs>
 
-                <!-- 1. Soft Forward Headlight Beams -->
-                <polygon points="17.5,8 10,0 21,0 18.5,8" fill="url(#beamGrad)"/>
-                <polygon points="30.5,8 27,0 38,0 29.5,8" fill="url(#beamGrad)"/>
+                <!-- Headlight Beams -->
+                <polygon points="9.5,4.5 5,0 11.5,0 10.2,4.5" fill="url(#beamGrad)"/>
+                <polygon points="16.5,4.5 14.5,0 21,0 15.8,4.5" fill="url(#beamGrad)"/>
 
-                <!-- 2. Outer Locator Pulse Halo -->
-                <circle cx="24" cy="24" r="22.5" fill="rgba(6,182,212,0.08)" stroke="#06b6d4" stroke-width="1" stroke-dasharray="3 3"/>
+                <!-- Locator Halo -->
+                <circle cx="13" cy="13" r="12" fill="rgba(6,182,212,0.06)" stroke="#06b6d4" stroke-width="0.75" stroke-dasharray="2 2"/>
 
-                <!-- 3. Four Tires (Top View) -->
-                <!-- Front-Left Tire -->
-                <rect x="12" y="10" width="3.5" height="7.5" rx="1.5" fill="#090d16" stroke="#475569" stroke-width="0.8"/>
-                <!-- Front-Right Tire -->
-                <rect x="32.5" y="10" width="3.5" height="7.5" rx="1.5" fill="#090d16" stroke="#475569" stroke-width="0.8"/>
-                <!-- Rear-Left Tire -->
-                <rect x="12" y="29.5" width="3.5" height="7.5" rx="1.5" fill="#090d16" stroke="#475569" stroke-width="0.8"/>
-                <!-- Rear-Right Tire -->
-                <rect x="32.5" y="29.5" width="3.5" height="7.5" rx="1.5" fill="#090d16" stroke="#475569" stroke-width="0.8"/>
+                <!-- Tires -->
+                <rect x="6.5" y="5.5" width="2.0" height="4.2" rx="0.8" fill="#090d16" stroke="#475569" stroke-width="0.5"/>
+                <rect x="17.5" y="5.5" width="2.0" height="4.2" rx="0.8" fill="#090d16" stroke="#475569" stroke-width="0.5"/>
+                <rect x="6.5" y="16.0" width="2.0" height="4.2" rx="0.8" fill="#090d16" stroke="#475569" stroke-width="0.5"/>
+                <rect x="17.5" y="16.0" width="2.0" height="4.2" rx="0.8" fill="#090d16" stroke="#475569" stroke-width="0.5"/>
 
-                <!-- 4. Side Mirrors -->
-                <path d="M 14.5,16.5 L 11,17.5 L 11.5,19.5 L 14.5,18.5 Z" fill="#0284c7" stroke="#ffffff" stroke-width="0.5"/>
-                <path d="M 33.5,16.5 L 37,17.5 L 36.5,19.5 L 33.5,18.5 Z" fill="#0284c7" stroke="#ffffff" stroke-width="0.5"/>
+                <!-- Mirrors -->
+                <path d="M 8,9 L 6,9.5 L 6.2,10.8 L 8,10.2 Z" fill="#0284c7" stroke="#ffffff" stroke-width="0.3"/>
+                <path d="M 18,9 L 20,9.5 L 19.8,10.8 L 18,10.2 Z" fill="#0284c7" stroke="#ffffff" stroke-width="0.3"/>
 
-                <!-- 5. Main Car Body Shell -->
-                <path d="M 18,6.5 C 20.5,5.5 27.5,5.5 30,6.5 C 32.5,7.8 33.5,11 33.5,15.5 L 33.5,32.5 C 33.5,37 32.5,41 30,41.5 C 27.5,42.5 20.5,42.5 18,41.5 C 15.5,41 14.5,37 14.5,32.5 L 14.5,15.5 C 14.5,11 15.5,7.8 18,6.5 Z"
-                  fill="url(#carBodyGrad)" stroke="#ffffff" stroke-width="1.2" stroke-linejoin="round"/>
+                <!-- Body Shell -->
+                <path d="M 10,4 C 11.2,3.4 14.8,3.4 16,4 C 17.5,4.8 18.2,6.5 18.2,9 L 18.2,18 C 18.2,20.5 17.5,22.2 16,22.5 C 14.8,22.8 11.2,22.8 10,22.5 C 8.5,22.2 7.8,20.5 7.8,18 L 7.8,9 C 7.8,6.5 8.5,4.8 10,4 Z"
+                  fill="url(#carBodyGrad)" stroke="#ffffff" stroke-width="0.75" stroke-linejoin="round"/>
 
-                <!-- 6. Front Hood Contours & Direction Arrow -->
-                <path d="M 20,8 L 21,14 M 28,8 L 27,14" stroke="rgba(255,255,255,0.4)" stroke-width="0.75" stroke-linecap="round"/>
-                <path d="M 24,3.5 L 26,6.5 L 22,6.5 Z" fill="#38bdf8" stroke="#ffffff" stroke-width="0.6"/>
+                <!-- Hood Creases & Nose Pointer -->
+                <path d="M 11,5 L 11.5,8 M 15,5 L 14.5,8" stroke="rgba(255,255,255,0.45)" stroke-width="0.5" stroke-linecap="round"/>
+                <path d="M 13,2 L 14.2,3.8 L 11.8,3.8 Z" fill="#38bdf8" stroke="#ffffff" stroke-width="0.4"/>
 
-                <!-- 7. Front Windshield -->
-                <path d="M 17.5,15 C 20.5,14.2 27.5,14.2 30.5,15 L 29.5,21 C 26.5,20.5 21.5,20.5 18.5,21 Z"
-                  fill="url(#glassGrad)" stroke="#38bdf8" stroke-width="0.75"/>
+                <!-- Front Windshield -->
+                <path d="M 9.5,8.8 C 11,8.3 15,8.3 16.5,8.8 L 16,12.2 C 14.5,11.8 11.5,11.8 10,12.2 Z"
+                  fill="url(#glassGrad)" stroke="#38bdf8" stroke-width="0.5"/>
 
-                <!-- 8. Cabin Roof Shell & Sunroof -->
-                <rect x="18" y="21" width="12" height="10" rx="2" fill="#0284c7" stroke="rgba(255,255,255,0.3)" stroke-width="0.6"/>
-                <rect x="19.5" y="22.5" width="9" height="7" rx="1.5" fill="#082f49" stroke="#38bdf8" stroke-width="0.5"/>
+                <!-- Roof & Sunroof -->
+                <rect x="9.8" y="12" width="6.4" height="5.5" rx="1.2" fill="#0284c7" stroke="rgba(255,255,255,0.3)" stroke-width="0.4"/>
+                <rect x="10.8" y="12.8" width="4.4" height="3.8" rx="0.8" fill="#082f49" stroke="#38bdf8" stroke-width="0.3"/>
 
-                <!-- 9. Rear Windshield -->
-                <path d="M 18.5,31 C 21.5,31.5 26.5,31.5 29.5,31 L 29,35.5 C 27,36 21,36 19,35.5 Z"
-                  fill="url(#glassGrad)" stroke="#38bdf8" stroke-width="0.75"/>
+                <!-- Rear Windshield -->
+                <path d="M 10,17.5 C 11.5,17.8 14.5,17.8 16,17.5 L 15.6,19.8 C 14.5,20.1 11.5,20.1 10.4,19.8 Z"
+                  fill="url(#glassGrad)" stroke="#38bdf8" stroke-width="0.5"/>
 
-                <!-- 10. Xenon Headlights -->
-                <ellipse cx="17.5" cy="8" rx="2" ry="1.2" fill="#fef08a" stroke="#ffffff" stroke-width="0.5"/>
-                <ellipse cx="30.5" cy="8" rx="2" ry="1.2" fill="#fef08a" stroke="#ffffff" stroke-width="0.5"/>
+                <!-- Headlights -->
+                <ellipse cx="9.8" cy="4.8" rx="1.1" ry="0.7" fill="#fef08a" stroke="#ffffff" stroke-width="0.3"/>
+                <ellipse cx="16.2" cy="4.8" rx="1.1" ry="0.7" fill="#fef08a" stroke="#ffffff" stroke-width="0.3"/>
 
-                <!-- 11. Red LED Taillights -->
-                <rect x="15.5" y="40.5" width="3.5" height="1.4" rx="0.5" fill="#f43f5e" stroke="#fda4af" stroke-width="0.3"/>
-                <rect x="29" y="40.5" width="3.5" height="1.4" rx="0.5" fill="#f43f5e" stroke="#fda4af" stroke-width="0.3"/>
+                <!-- Taillights -->
+                <rect x="8.5" y="22.0" width="2" height="0.9" rx="0.3" fill="#f43f5e" stroke="#fda4af" stroke-width="0.2"/>
+                <rect x="15.5" y="22.0" width="2" height="0.9" rx="0.3" fill="#f43f5e" stroke="#fda4af" stroke-width="0.2"/>
               </svg>
             </div>
           </div>
         `,
-        iconSize: [48, 48],
-        iconAnchor: [24, 24],
+        iconSize: [26, 26],
+        iconAnchor: [13, 13],
       });
 
       const marker = L.marker([latitude, longitude], {
@@ -261,17 +246,20 @@ export default function MapView({
       }).addTo(map);
       markerRef.current = marker;
 
+      // Cache direct reference to car rotator element
+      carPointerRotatorRef.current = mapContainerRef.current.querySelector('#car-pointer-rotator') as HTMLElement | null;
+
       // Real-time Cyan GPS Breadcrumb Trail Polyline
       const polyline = L.polyline([[latitude, longitude]], {
         color: '#06b6d4',
-        weight: 4,
-        opacity: 0.85,
+        weight: 3.5,
+        opacity: 0.8,
         lineCap: 'round',
         lineJoin: 'round',
       }).addTo(map);
       polylineRef.current = polyline;
 
-      // Drag listener for North-Up free pan
+      // Drag listener: disable camera centering so user can pan freely
       map.on('dragstart', () => {
         setIsFollowing(false);
       });
@@ -283,7 +271,6 @@ export default function MapView({
       mapRef.current = map;
       setIsMapReady(true);
 
-      // Crucial: invalidateSize after mount so tiles load fully across the generous 160vmax rotator canvas
       setTimeout(() => {
         if (mapRef.current) {
           mapRef.current.invalidateSize();
@@ -331,16 +318,6 @@ export default function MapView({
     });
   }, [tileTheme, isMapReady]);
 
-  // Dynamically synchronize map dragging capability with active interaction mode
-  useEffect(() => {
-    if (!mapRef.current) return;
-    if (interactionMode === 'hover') {
-      mapRef.current.dragging.enable();
-    } else {
-      mapRef.current.dragging.disable();
-    }
-  }, [interactionMode]);
-
   // Update Vehicle Marker Position & Heading Angle Smoothly at 60 FPS
   useEffect(() => {
     if (!markerRef.current || !mapContainerRef.current) return;
@@ -355,41 +332,47 @@ export default function MapView({
     const unwrappedHeading = prevContinuous + normalizedDiff;
     continuousHeadingRef.current = unwrappedHeading;
 
-    // 3. Update rotation of map rotator and car pointer
-    const rotator = mapContainerRef.current.querySelector('#car-pointer-rotator') as HTMLElement | null;
+    // 3. Fast direct rotator update without DOM querying
+    let rotator = carPointerRotatorRef.current;
+    if (!rotator) {
+      rotator = mapContainerRef.current.querySelector('#car-pointer-rotator') as HTMLElement | null;
+      carPointerRotatorRef.current = rotator;
+    }
 
+    // Stable Orientation: rotation MUST depend strictly on orientationMode, NEVER on isFollowing!
     if (mapRotatorRef.current) {
-      if (orientationMode === 'heading-up' && isFollowing) {
-        // Rotate world by -headingDegrees so road ahead aligns straight UP on screen
-        mapRotatorRef.current.style.transform = `translate(-50%, -50%) rotate(${-unwrappedHeading}deg)`;
+      if (orientationMode === 'heading-up') {
+        mapRotatorRef.current.style.transform = `translate3d(-50%, -50%, 0) rotate(${-unwrappedHeading}deg)`;
         if (rotator) {
-          // Inside the -heading container, rotating marker by +heading keeps it pointing strictly 0° UP relative to screen
           rotator.style.transform = `rotate(${unwrappedHeading}deg)`;
         }
       } else {
-        // North-Up: map stays fixed at 0° (and when freely hovering/panning so dragging is 100% natural)
-        mapRotatorRef.current.style.transform = 'translate(-50%, -50%) rotate(0deg)';
+        mapRotatorRef.current.style.transform = 'translate3d(-50%, -50%, 0) rotate(0deg)';
         if (rotator) {
           rotator.style.transform = `rotate(${headingDegrees}deg)`;
         }
       }
     }
 
-    // 4. Camera Follow & Free Hover/Pan logic:
-    // If the vehicle starts driving, automatically re-lock camera onto the car
+    // 4. Camera Follow with displacement throttling (prevents micro-stutter when idling/stopped)
     const isDriving = Math.abs(speedKmh) > 0.4;
     if (isDriving && !isFollowing) {
       setIsFollowing(true);
     }
 
-    // Camera only auto-centers when isFollowing is active.
-    // When the user drags/pans the map in Hover mode, isFollowing is false,
-    // so the camera stays wherever the user hovered/panned to explore!
     if (isFollowing && mapRef.current) {
-      mapRef.current.setView([latitude, longitude], mapRef.current.getZoom(), { animate: false });
+      const dViewLat = latitude - lastViewPosRef.current.lat;
+      const dViewLon = longitude - lastViewPosRef.current.lon;
+      const distViewSq = dViewLat * dViewLat + dViewLon * dViewLon;
+
+      // Only invoke setView when vehicle has moved > ~0.08m or when actively driving
+      if (distViewSq > 0.0000000001 || isDriving) {
+        mapRef.current.setView([latitude, longitude], mapRef.current.getZoom(), { animate: false });
+        lastViewPosRef.current = { lat: latitude, lon: longitude };
+      }
     }
 
-    // 5. Breadcrumb Trail Handling (only if showTrail is enabled by user)
+    // 5. Breadcrumb Trail Handling without state setter thrashing!
     const dLat = latitude - lastRecordedPosRef.current.lat;
     const dLon = longitude - lastRecordedPosRef.current.lon;
     const distSq = dLat * dLat + dLon * dLon;
@@ -399,17 +382,17 @@ export default function MapView({
       setIsFollowing(true);
       if (mapRef.current) {
         mapRef.current.setView([latitude, longitude], mapRef.current.getZoom(), { animate: false });
+        lastViewPosRef.current = { lat: latitude, lon: longitude };
       }
       if (polylineRef.current) {
         polylineRef.current.setLatLngs([]);
-        setBreadcrumbCount(0);
+        breadcrumbCountRef.current = 0;
       }
       lastRecordedPosRef.current = { lat: latitude, lon: longitude };
     } else if (distSq > 0.0000000004 && showTrail) {
-      // Normal driving movement (~2m) with trail enabled
       if (polylineRef.current) {
         polylineRef.current.addLatLng([latitude, longitude]);
-        setBreadcrumbCount((prev) => prev + 1);
+        breadcrumbCountRef.current++;
       }
       lastRecordedPosRef.current = { lat: latitude, lon: longitude };
     }
@@ -419,7 +402,7 @@ export default function MapView({
   useEffect(() => {
     if (!showTrail && polylineRef.current) {
       polylineRef.current.setLatLngs([]);
-      setBreadcrumbCount(0);
+      breadcrumbCountRef.current = 0;
     }
   }, [showTrail]);
 
@@ -427,7 +410,7 @@ export default function MapView({
   const toggleOrientationMode = useCallback(() => {
     setIsTransitioning(true);
 
-    const rotator = mapContainerRef.current?.querySelector('#car-pointer-rotator') as HTMLElement | null;
+    const rotator = carPointerRotatorRef.current;
     if (rotator) {
       rotator.style.transition = 'transform 0.3s ease-out';
     }
@@ -437,13 +420,13 @@ export default function MapView({
 
       if (mapRef.current && nextMode === 'heading-up') {
         mapRef.current.setView([latitude, longitude], mapRef.current.getZoom(), { animate: false });
+        lastViewPosRef.current = { lat: latitude, lon: longitude };
         setIsFollowing(true);
       }
 
       return nextMode;
     });
 
-    // Revert to 0ms transition for instantaneous 60 FPS driving response after mode switch
     setTimeout(() => {
       setIsTransitioning(false);
       if (rotator) {
@@ -459,6 +442,7 @@ export default function MapView({
   const handleRecenter = useCallback(() => {
     if (mapRef.current) {
       mapRef.current.setView([latitude, longitude], mapRef.current.getZoom(), { animate: true });
+      lastViewPosRef.current = { lat: latitude, lon: longitude };
       setIsFollowing(true);
     }
   }, [latitude, longitude]);
@@ -478,23 +462,35 @@ export default function MapView({
 
   const handleClearTrail = () => {
     if (polylineRef.current) {
-      polylineRef.current.setLatLngs([[latitude, longitude]]);
-      setBreadcrumbCount(0);
+      polylineRef.current.setLatLngs([]);
+      breadcrumbCountRef.current = 0;
       lastRecordedPosRef.current = { lat: latitude, lon: longitude };
     }
   };
 
-  // Click-to-teleport on map with inverse 2D rotation matrix and heading azimuth calculation
-  const handleViewportClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    // 1. Only process destination selection when explicitly in 'select' mode
-    if (interactionMode !== 'select') {
-      return;
-    }
+  // Pointer down to record drag start position for drag vs click disambiguation
+  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    pointerDownPosRef.current = { x: e.clientX, y: e.clientY };
+  };
 
+  // Accurate Click-to-Teleport with exact inverse rotation matrix & drag filtering
+  const handleViewportClick = (e: React.MouseEvent<HTMLDivElement>) => {
     // Ignore clicks originating from interactive UI buttons, inputs, links
     if ((e.target as HTMLElement).closest('button, a, input, select, textarea, [role="button"]')) {
       return;
     }
+
+    // Filter out pan/drag gestures: only accept intentional stationary clicks
+    if (pointerDownPosRef.current) {
+      const dragDist = Math.hypot(
+        e.clientX - pointerDownPosRef.current.x,
+        e.clientY - pointerDownPosRef.current.y
+      );
+      if (dragDist > 6) {
+        return;
+      }
+    }
+
     if (!mapRef.current || !onTeleportRef.current || !leafletModuleRef.current) return;
 
     const L = leafletModuleRef.current;
@@ -508,39 +504,36 @@ export default function MapView({
     const deltaX = e.clientX - screenCenterX;
     const deltaY = e.clientY - screenCenterY;
 
-    // Check if the map rotator is currently rotated on screen.
-    // The rotator is ONLY rotated when in Heading-Up mode AND following the car!
-    // When the map was panned in Hover mode or in North-Up mode, rotation is 0deg.
-    const isRotated = orientationMode === 'heading-up' && isFollowing;
-    let unrotX = deltaX;
-    let unrotY = deltaY;
+    // The rotator is rotated by phi = -heading in Heading-Up mode, 0 in North-Up mode
+    const isHeadingUp = orientationMode === 'heading-up';
+    const currentHeading = isHeadingUp ? continuousHeadingRef.current : 0;
+    const phi = isHeadingUp ? (-currentHeading * Math.PI) / 180 : 0;
 
-    if (isRotated) {
-      const headingRad = (continuousHeadingRef.current * Math.PI) / 180;
-      unrotX = deltaX * Math.cos(headingRad) - deltaY * Math.sin(headingRad);
-      unrotY = deltaX * Math.sin(headingRad) + deltaY * Math.cos(headingRad);
-    }
+    // Exact inverse rotation:
+    const u = deltaX * Math.cos(phi) + deltaY * Math.sin(phi);
+    const v = -deltaX * Math.sin(phi) + deltaY * Math.cos(phi);
 
-    // Convert pixel offset from screen center to exact geographic coordinates using Web Mercator projection
     const centerLatLng = mapRef.current.getCenter();
     const currentZoom = mapRef.current.getZoom();
     const centerPixel = mapRef.current.project(centerLatLng, currentZoom);
-    const targetPixel = L.point(centerPixel.x + unrotX, centerPixel.y + unrotY);
+    const targetPixel = L.point(centerPixel.x + u, centerPixel.y + v);
     const targetLatLng = mapRef.current.unproject(targetPixel, currentZoom);
 
-    // Calculate heading pointing towards the clicked destination
     const targetHeading = Math.round(
       calculateBearing(latitude, longitude, targetLatLng.lat, targetLatLng.lng, headingDegrees)
     );
 
-    // Strictly clear any breadcrumbs so NO line is drawn when selecting destinations
+    // Visual pinpoint indicator
+    setTeleportPulse({ x: e.clientX, y: e.clientY });
+    setTimeout(() => setTeleportPulse(null), 600);
+
     if (polylineRef.current) {
       polylineRef.current.setLatLngs([]);
-      setBreadcrumbCount(0);
+      breadcrumbCountRef.current = 0;
     }
     lastRecordedPosRef.current = { lat: targetLatLng.lat, lon: targetLatLng.lng };
+    lastViewPosRef.current = { lat: targetLatLng.lat, lon: targetLatLng.lng };
 
-    // Re-lock camera follow onto the newly selected place
     setIsFollowing(true);
     mapRef.current.setView([targetLatLng.lat, targetLatLng.lng], mapRef.current.getZoom(), { animate: true });
 
@@ -558,35 +551,20 @@ export default function MapView({
   return (
     <div
       ref={mapViewportRef}
+      onPointerDown={handlePointerDown}
       onClick={handleViewportClick}
-      className={`relative w-full h-full overflow-hidden select-none ${
-        interactionMode === 'select' ? 'select-mode-active' : 'hover-mode-active'
-      } ${className}`}
+      className={`relative w-full h-full overflow-hidden select-none cursor-grab active:cursor-grabbing ${className}`}
     >
-      {/* Dark mode CSS filter, dark container background fallback, and dynamic cursor mode styles */}
       <style
         dangerouslySetInnerHTML={{
           __html: `
             .leaflet-container {
               background-color: #020617 !important;
               background: #020617 !important;
-            }
-            .hover-mode-active,
-            .hover-mode-active .leaflet-container,
-            .hover-mode-active .leaflet-grab,
-            .hover-mode-active .leaflet-pane {
               cursor: grab !important;
             }
-            .hover-mode-active:active,
-            .hover-mode-active .leaflet-container:active,
-            .hover-mode-active .leaflet-grabbing,
-            .hover-mode-active .leaflet-pane:active {
+            .leaflet-container:active {
               cursor: grabbing !important;
-            }
-            .select-mode-active,
-            .select-mode-active .leaflet-container,
-            .select-mode-active .leaflet-pane {
-              cursor: crosshair !important;
             }
             .osm-dark-theme .leaflet-tile-pane {
               filter: invert(100%) hue-rotate(180deg) brightness(86%) contrast(92%);
@@ -595,7 +573,7 @@ export default function MapView({
         }}
       />
 
-      {/* Rotating Map Viewport Wrapper (sized generously at 160vmax so rotation reveals zero blank corners) */}
+      {/* Rotating Map Viewport Wrapper: 142vmax screen diagonal with hardware acceleration */}
       <div
         ref={mapRotatorRef}
         id="map-rotator"
@@ -603,12 +581,13 @@ export default function MapView({
           isTransitioning ? 'transition-transform duration-300 ease-out' : 'transition-none'
         }`}
         style={{
-          width: '160vmax',
-          height: '160vmax',
-          transform: `translate(-50%, -50%) rotate(${
+          width: '142vmax',
+          height: '142vmax',
+          transform: `translate3d(-50%, -50%, 0) rotate(${
             orientationMode === 'heading-up' ? -headingDegrees : 0
           }deg)`,
           willChange: 'transform',
+          contain: 'layout paint',
         }}
       >
         <div
@@ -617,6 +596,17 @@ export default function MapView({
         />
       </div>
 
+      {/* Pinpoint Teleport Pulse Effect */}
+      {teleportPulse && (
+        <div
+          className="pointer-events-none fixed z-[2000] -translate-x-1/2 -translate-y-1/2"
+          style={{ left: teleportPulse.x, top: teleportPulse.y }}
+        >
+          <div className="w-8 h-8 rounded-full border-2 border-cyan-400 bg-cyan-400/20 animate-ping" />
+          <div className="w-2.5 h-2.5 rounded-full bg-cyan-300 absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 shadow-lg shadow-cyan-400" />
+        </div>
+      )}
+
       {/* Curb Strike Red Flash Vignette */}
       {collision?.curbContact && boundaryMode !== 'off' && (
         <div className="absolute inset-0 pointer-events-none z-[1200] border-4 sm:border-8 border-rose-500/80 bg-rose-500/10 animate-pulse transition-opacity duration-75" />
@@ -624,16 +614,16 @@ export default function MapView({
 
       {/* ================= FIXED SCREEN-SPACE MAP OVERLAYS ================= */}
 
-      {/* Top-Right Floating Map Controls Stack */}
+      {/* Sleek Consolidated Top-Right Map Controls Stack */}
       <div className="absolute top-16 right-4 sm:right-6 z-[1000] flex flex-col gap-2 pointer-events-auto">
         {/* Zoom In/Out Cluster */}
-        <div className="bg-slate-900/90 border border-slate-800 rounded-2xl shadow-2xl backdrop-blur-md p-1 flex flex-col gap-1">
+        <div className="bg-slate-900/90 border border-slate-800 rounded-2xl shadow-xl backdrop-blur-md p-1 flex flex-col gap-1">
           <button
             type="button"
             onClick={handleZoomIn}
             disabled={zoomLevel >= 19}
             className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center text-slate-200 hover:text-white hover:bg-slate-800 disabled:opacity-30 disabled:hover:bg-transparent transition font-bold text-lg"
-            title="Zoom In (Max 19)"
+            title="Zoom In"
           >
             +
           </button>
@@ -643,44 +633,45 @@ export default function MapView({
             onClick={handleZoomOut}
             disabled={zoomLevel <= 8}
             className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center text-slate-200 hover:text-white hover:bg-slate-800 disabled:opacity-30 disabled:hover:bg-transparent transition font-bold text-lg"
-            title="Zoom Out (Min 8)"
+            title="Zoom Out"
           >
             −
           </button>
         </div>
 
-        {/* Quick Interaction Mode Toggle in Toolbar */}
+        {/* Camera Tracking Toggle / Re-center Target Button */}
         <button
           type="button"
-          onClick={() => setInteractionMode((prev) => (prev === 'hover' ? 'select' : 'hover'))}
-          className={`p-2.5 sm:p-3 rounded-2xl border shadow-2xl backdrop-blur-md transition flex items-center justify-center ${
-            interactionMode === 'select'
-              ? 'bg-cyan-500 text-slate-950 border-cyan-400 font-bold ring-2 ring-cyan-400/40 shadow-cyan-500/20'
+          onClick={() => {
+            if (isFollowing) {
+              setIsFollowing(false);
+            } else {
+              handleRecenter();
+            }
+          }}
+          className={`p-2.5 sm:p-3 rounded-2xl border shadow-xl backdrop-blur-md transition flex items-center justify-center ${
+            !isFollowing
+              ? 'bg-cyan-950/90 text-cyan-300 border-cyan-400 ring-2 ring-cyan-400/40 animate-pulse'
               : 'bg-slate-900/90 text-slate-400 border-slate-800 hover:text-slate-100 hover:bg-slate-800'
           }`}
-          title={
-            interactionMode === 'select'
-              ? 'Mode: Select Place (Active) — Click to switch to Hover / Pan Mode'
-              : 'Mode: Hover / Pan (Active) — Click to switch to Select Place Mode'
-          }
+          title={isFollowing ? 'Camera locked on vehicle' : 'Camera panned — Click to re-center on car'}
         >
-          <span className="text-base sm:text-lg">{interactionMode === 'select' ? '🎯' : '✋'}</span>
+          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+          </svg>
         </button>
 
         {/* Quick Orientation Toggle Button in Stack */}
         <button
           type="button"
           onClick={toggleOrientationMode}
-          className={`p-2.5 sm:p-3 rounded-2xl border shadow-2xl backdrop-blur-md transition flex items-center justify-center ${
+          className={`p-2.5 sm:p-3 rounded-2xl border shadow-xl backdrop-blur-md transition flex items-center justify-center ${
             orientationMode === 'heading-up'
-              ? 'bg-cyan-950/85 text-cyan-300 border-cyan-500/60 hover:bg-cyan-900/90 ring-1 ring-cyan-500/30'
+              ? 'bg-cyan-950/85 text-cyan-300 border-cyan-500/60 hover:bg-cyan-900/90'
               : 'bg-slate-900/90 text-slate-400 border-slate-800 hover:text-slate-100 hover:bg-slate-800'
           }`}
-          title={
-            orientationMode === 'heading-up'
-              ? 'Mode: Heading-Up (Driver POV) — Click to switch to North-Up'
-              : 'Mode: North-Up (Fixed Map) — Click to switch to Driver POV'
-          }
+          title={orientationMode === 'heading-up' ? 'Driver POV (Heading-Up)' : 'Fixed Map (North-Up)'}
         >
           <span className="text-base sm:text-lg">🧭</span>
         </button>
@@ -693,58 +684,23 @@ export default function MapView({
               boundaryMode === 'strict' ? 'soft' : boundaryMode === 'soft' ? 'off' : 'strict';
             onBoundaryModeChange?.(nextMode);
           }}
-          className={`p-2.5 sm:p-3 rounded-2xl border shadow-2xl backdrop-blur-md transition flex items-center justify-center ${
+          className={`p-2.5 sm:p-3 rounded-2xl border shadow-xl backdrop-blur-md transition flex items-center justify-center ${
             boundaryMode === 'strict'
-              ? 'bg-emerald-950/85 text-emerald-300 border-emerald-500/60 ring-1 ring-emerald-500/30'
+              ? 'bg-emerald-950/85 text-emerald-300 border-emerald-500/60'
               : boundaryMode === 'soft'
-              ? 'bg-amber-950/85 text-amber-300 border-amber-500/60 ring-1 ring-amber-500/30'
+              ? 'bg-amber-950/85 text-amber-300 border-amber-500/60'
               : 'bg-slate-900/90 text-slate-500 border-slate-800 hover:text-slate-300 hover:bg-slate-800'
           }`}
-          title={
-            boundaryMode === 'strict'
-              ? 'Road Boundaries: STRICT (Cannot leave asphalt) — Click for Soft'
-              : boundaryMode === 'soft'
-              ? 'Road Boundaries: SOFT (Curb friction/scrape) — Click for Off'
-              : 'Road Boundaries: OFF (Free Roam) — Click for Strict'
-          }
+          title={`Road Boundaries: ${boundaryMode.toUpperCase()} (Click to cycle)`}
         >
           <span className="text-base sm:text-lg">🚧</span>
-        </button>
-
-        {/* Camera Tracking Toggle / Re-center */}
-        <button
-          type="button"
-          onClick={() => {
-            if (orientationMode === 'heading-up') {
-              handleRecenter();
-            } else if (isFollowing) {
-              setIsFollowing(false);
-            } else {
-              handleRecenter();
-            }
-          }}
-          className={`p-2.5 sm:p-3 rounded-2xl border shadow-2xl backdrop-blur-md transition flex items-center justify-center ${
-            isFollowing
-              ? 'bg-cyan-950/80 text-cyan-300 border-cyan-500/50 hover:bg-cyan-900/80'
-              : 'bg-slate-900/90 text-slate-400 border-slate-800 hover:text-slate-100 hover:bg-slate-800'
-          }`}
-          title={
-            isFollowing
-              ? 'Camera auto-centered on car. Click to unlock pan'
-              : 'Pan unlocked. Click to re-center on car'
-          }
-        >
-          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-          </svg>
         </button>
 
         {/* Map Tile Layer Theme Switcher */}
         <div className="relative group">
           <button
             type="button"
-            className="p-2.5 sm:p-3 rounded-2xl bg-slate-900/90 border border-slate-800 text-slate-300 hover:text-white hover:bg-slate-800 shadow-2xl backdrop-blur-md transition"
+            className="p-2.5 sm:p-3 rounded-2xl bg-slate-900/90 border border-slate-800 text-slate-300 hover:text-white hover:bg-slate-800 shadow-xl backdrop-blur-md transition"
             title="Switch Map Tile Theme"
           >
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -752,8 +708,7 @@ export default function MapView({
             </svg>
           </button>
 
-          {/* Theme Dropdown Menu */}
-          <div className="absolute right-0 top-12 hidden group-hover:flex flex-col bg-slate-900/95 border border-slate-800 rounded-2xl shadow-2xl p-1.5 w-48 backdrop-blur-md divide-y divide-slate-800/60 z-50">
+          <div className="absolute right-0 top-12 hidden group-hover:flex flex-col bg-slate-900/95 border border-slate-800 rounded-2xl shadow-2xl p-1.5 w-44 backdrop-blur-md divide-y divide-slate-800/60 z-50">
             {(Object.keys(TILE_LAYERS) as TileTheme[]).map((themeKey) => (
               <button
                 key={themeKey}
@@ -771,155 +726,77 @@ export default function MapView({
           </div>
         </div>
 
-        {/* Clear Breadcrumbs */}
-        {breadcrumbCount > 10 && (
+        {/* Trail Toggle & Clear */}
+        <div className="flex flex-col gap-1 items-center">
           <button
             type="button"
-            onClick={handleClearTrail}
-            className="p-2 rounded-xl bg-slate-900/80 border border-slate-800 text-slate-400 hover:text-rose-400 hover:border-rose-800/50 shadow-xl backdrop-blur-md transition text-[11px] font-mono"
-            title="Clear Route Breadcrumbs"
+            onClick={() => setShowTrail((prev) => !prev)}
+            className={`p-2 rounded-xl text-xs font-mono border backdrop-blur-md transition ${
+              showTrail
+                ? 'bg-cyan-950/70 text-cyan-300 border-cyan-700/60'
+                : 'bg-slate-900/80 text-slate-500 border-slate-800 hover:text-slate-300'
+            }`}
+            title="Toggle GPS Breadcrumb Trail"
           >
-            Clear Trail
+            〰️
           </button>
-        )}
+          {showTrail && (
+            <button
+              type="button"
+              onClick={handleClearTrail}
+              className="text-[10px] text-slate-500 hover:text-rose-400 font-mono transition"
+              title="Clear Trail Points"
+            >
+              Clear
+            </button>
+          )}
+        </div>
       </div>
 
-      {/* Top-Left Compass & Orientation Mode Cluster (positioned below floating search bar) */}
+      {/* Sleek Minimalist Top-Left Compass & Heading Cluster */}
       <div className="absolute top-[120px] left-4 sm:left-6 z-[1000] flex flex-col gap-2 pointer-events-auto">
-        <div className="bg-slate-900/95 border border-slate-800 rounded-3xl shadow-2xl backdrop-blur-md p-3 sm:p-3.5 flex items-center gap-3.5 max-w-xs">
-          {/* Compass Dial with Real North Needle Pointer */}
+        <div className="bg-slate-900/90 border border-slate-800 rounded-2xl shadow-xl backdrop-blur-md p-2.5 sm:p-3 flex items-center gap-3">
+          {/* Compass Dial */}
           <div
             onClick={toggleOrientationMode}
-            className="relative w-11 h-11 rounded-full bg-slate-950 border border-slate-800 flex items-center justify-center cursor-pointer hover:border-cyan-500/60 transition group shrink-0"
-            title={
-              orientationMode === 'heading-up'
-                ? 'North needle indicates real North. Click to toggle North-Up'
-                : 'Compass indicator. Click to toggle Driver POV'
-            }
+            className="relative w-9 h-9 rounded-full bg-slate-950 border border-slate-800 flex items-center justify-center cursor-pointer hover:border-cyan-500/60 transition group shrink-0"
+            title="Click to toggle Driver POV / North-Up"
           >
-            <span className="text-rose-500 font-mono text-[9px] font-black absolute top-0.5 pointer-events-none">
+            <span className="text-rose-500 font-mono text-[8px] font-black absolute top-0.5 pointer-events-none">
               N
             </span>
             <div
-              className="w-1.5 h-6 bg-gradient-to-b from-rose-500 via-slate-300 to-cyan-400 rounded-full transition-transform duration-75 shadow-sm"
+              className="w-1 h-5 bg-gradient-to-b from-rose-500 via-slate-300 to-cyan-400 rounded-full transition-transform duration-75 shadow-sm"
               style={{
                 transform: `rotate(${orientationMode === 'heading-up' ? -headingDegrees : 0}deg)`,
               }}
             />
-            <div className="w-2 h-2 rounded-full bg-slate-950 border border-slate-400 absolute" />
+            <div className="w-1.5 h-1.5 rounded-full bg-slate-950 border border-slate-400 absolute" />
           </div>
 
-          {/* Heading Info & Mode Toggle Button */}
+          {/* Heading Info */}
           <div className="flex flex-col min-w-0">
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-bold text-slate-100 font-mono tracking-wider">
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs font-bold text-slate-100 font-mono tracking-wider">
                 {Math.round(headingDegrees).toString().padStart(3, '0')}°
               </span>
-              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-800 text-cyan-400 uppercase tracking-wider font-mono">
+              <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-slate-800 text-cyan-400 uppercase font-mono">
                 {getCardinalDirection(headingDegrees)}
               </span>
             </div>
 
-            {/* Mode Switcher Button */}
             <button
               type="button"
               onClick={toggleOrientationMode}
-              className={`mt-1.5 px-2.5 py-1 rounded-xl text-[11px] font-bold transition flex items-center gap-1.5 border shadow-sm ${
-                orientationMode === 'heading-up'
-                  ? 'bg-cyan-950/90 text-cyan-300 border-cyan-500/60 hover:bg-cyan-900/90 ring-1 ring-cyan-500/30'
-                  : 'bg-slate-950/80 text-slate-300 border-slate-700 hover:bg-slate-800 hover:text-white'
-              }`}
-              title="Click to toggle between Heading-Up (Driver POV) and North-Up (Fixed Map)"
+              className="mt-0.5 text-[10px] font-medium text-slate-400 hover:text-cyan-300 text-left transition flex items-center gap-1"
             >
-              <span>🧭</span>
-              <span className="truncate">
-                {orientationMode === 'heading-up'
-                  ? 'Heading-Up (Driver POV)'
-                  : 'North-Up (Fixed Map)'}
-              </span>
+              <span>{orientationMode === 'heading-up' ? '🧭 Driver POV' : '🧭 North-Up'}</span>
             </button>
           </div>
         </div>
-
-        {/* Camera Free-Pan Alert Banner (shows whenever map is panned away from vehicle) */}
-        {!isFollowing && (
-          <button
-            type="button"
-            onClick={handleRecenter}
-            className="bg-cyan-950/95 border border-cyan-500/80 text-cyan-200 rounded-2xl px-3.5 py-2 text-xs font-bold shadow-2xl backdrop-blur-md flex items-center gap-2 hover:bg-cyan-900 transition animate-pulse"
-            title="Map is panned away. Click to snap camera back to vehicle"
-          >
-            <span>📍 Map Panned — Click to Recenter on Car</span>
-          </button>
-        )}
       </div>
-
-      {/* Top-Center Interactive Mode Switcher: Toggle between Hover/Pan Map and Select Place */}
-      <div className="absolute top-28 sm:top-16 left-1/2 -translate-x-1/2 z-[1050] pointer-events-auto flex flex-col items-center gap-1.5">
-        <div className="bg-slate-900/95 border border-slate-800 rounded-2xl p-1 shadow-2xl backdrop-blur-md flex items-center gap-1">
-          <button
-            type="button"
-            onClick={() => setInteractionMode('hover')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition flex items-center gap-1.5 ${
-              interactionMode === 'hover'
-                ? 'bg-cyan-500 text-slate-950 shadow-md font-bold'
-                : 'text-slate-300 hover:text-white hover:bg-slate-800/70'
-            }`}
-            title="Hover / Pan Map: Browse the map freely with normal cursor and without teleporting"
-          >
-            <span>✋</span>
-            <span>Hover / Pan Map</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setInteractionMode('select')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition flex items-center gap-1.5 ${
-              interactionMode === 'select'
-                ? 'bg-cyan-500 text-slate-950 shadow-md font-bold'
-                : 'text-slate-300 hover:text-white hover:bg-slate-800/70'
-            }`}
-            title="Select Place: One click anywhere to place vehicle and point towards destination"
-          >
-            <span>🎯</span>
-            <span>Select Place</span>
-          </button>
-        </div>
-
-        {/* Dynamic Context Hint */}
-        {interactionMode === 'select' && (
-          <div className="bg-cyan-950/90 border border-cyan-500/60 rounded-full px-3 py-1 text-[11px] text-cyan-200 font-medium backdrop-blur-md shadow-lg animate-in fade-in flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping" />
-            <span>Click any road to teleport and point car towards it (no line)</span>
-          </div>
-        )}
-      </div>
-
-      {/* Bottom Road Corridor Info Badge (Above HUD or at bottom edge) */}
-      {collision?.roadName && (
-        <div className="absolute top-[220px] left-4 sm:left-6 z-[1000] pointer-events-none hidden md:flex items-center gap-2 px-3 py-1.5 rounded-2xl bg-slate-900/90 border border-slate-800 text-xs font-mono backdrop-blur-md shadow-xl">
-          <span className="text-cyan-400">🛣️</span>
-          <span className="text-slate-200 font-medium truncate max-w-[200px]" title={collision.roadName}>
-            {collision.roadName}
-          </span>
-          <span className="text-slate-600">|</span>
-          <span className="text-slate-400">W: {collision.roadWidth}m</span>
-          <span className="text-slate-600">|</span>
-          <span className={collision.curbContact ? 'text-rose-400 font-bold animate-pulse' : 'text-slate-400'}>
-            Curb: {collision.distanceToCurb.toFixed(1)}m
-          </span>
-          <span
-            className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
-              boundaryMode === 'strict'
-                ? 'bg-emerald-950/80 text-emerald-400 border border-emerald-800/60'
-                : boundaryMode === 'soft'
-                ? 'bg-amber-950/80 text-amber-400 border border-amber-800/60'
-                : 'bg-slate-800 text-slate-400'
-            }`}
-          >
-            {boundaryMode}
-          </span>
-        </div>
-      )}
     </div>
   );
 }
+
+export default React.memo(MapViewComponent);

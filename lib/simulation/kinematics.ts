@@ -17,6 +17,15 @@ export interface KinematicsConfig {
   roadNetwork?: RoadNetwork;
 }
 
+export const STATIC_OFF_COLLISION: RoadCollisionState = {
+  isColliding: false,
+  curbContact: false,
+  roadName: '',
+  distanceToCurb: 0,
+  roadWidth: 0,
+  boundaryMode: 'off',
+};
+
 export class KinematicsModel {
   private readonly wheelbase: number;
   private readonly maxSteerAngleRad: number;
@@ -67,7 +76,11 @@ export class KinematicsModel {
    */
   public setBoundaryMode(mode: RoadBoundaryMode): void {
     this.boundaryMode = mode;
-    this.collision.boundaryMode = mode;
+    if (mode === 'off') {
+      this.collision = STATIC_OFF_COLLISION;
+    } else {
+      this.collision = this.evaluateCollision(this.latitude, this.longitude);
+    }
   }
 
   public getBoundaryMode(): RoadBoundaryMode {
@@ -75,7 +88,7 @@ export class KinematicsModel {
   }
 
   public getCollisionState(): RoadCollisionState {
-    return { ...this.collision };
+    return this.collision;
   }
 
   public getRoadNetwork(): RoadNetwork {
@@ -128,14 +141,7 @@ export class KinematicsModel {
       this.longitude = prospectiveLon;
       this.worldX += dx;
       this.worldY += dy;
-      this.collision = {
-        isColliding: false,
-        curbContact: false,
-        roadName: '',
-        distanceToCurb: 0,
-        roadWidth: 0,
-        boundaryMode: 'off',
-      };
+      this.collision = STATIC_OFF_COLLISION;
       return;
     }
 
@@ -269,7 +275,7 @@ export class KinematicsModel {
       yawRate: this.yawRate,
       worldX: this.worldX,
       worldY: this.worldY,
-      collision: { ...this.collision },
+      collision: this.collision,
     };
   }
 
@@ -290,14 +296,7 @@ export class KinematicsModel {
 
   private evaluateCollision(lat: number, lon: number): RoadCollisionState {
     if (this.boundaryMode === 'off') {
-      return {
-        isColliding: false,
-        curbContact: false,
-        roadName: '',
-        distanceToCurb: 0,
-        roadWidth: 0,
-        boundaryMode: 'off',
-      };
+      return STATIC_OFF_COLLISION;
     }
 
     const nearest = this.roadNetwork.findNearestRoad(lat, lon);

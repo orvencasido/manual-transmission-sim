@@ -24,7 +24,7 @@ export interface CockpitHeaderProps {
 
 export function CockpitHeader({
   title = 'Manual Driving Trainer',
-  subtitle = 'Professional Powertrain Telemetry & Dynamics Active',
+  subtitle = 'Live Powertrain Telemetry & Dynamics',
   engineStatus = 'RUNNING',
   isPaused,
   isMuted,

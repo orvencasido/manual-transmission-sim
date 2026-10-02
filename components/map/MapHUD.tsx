@@ -83,7 +83,7 @@ export function MapHUD({ state, stallCount = 0, className = '' }: MapHUDProps) {
               </span>
             </div>
 
-            {/* Speed Bar (0 to 180 km/h) */}
+            {/* Speed Bar */}
             <div className="w-full bg-slate-950 h-2 rounded-full overflow-hidden border border-slate-800 mt-1.5">
               <div
                 className="h-full bg-gradient-to-r from-cyan-500 to-indigo-500 rounded-full transition-all duration-75"
@@ -91,10 +91,8 @@ export function MapHUD({ state, stallCount = 0, className = '' }: MapHUDProps) {
               />
             </div>
 
-            <div className="flex items-center justify-between text-[10px] font-mono text-slate-500 mt-1">
-              <span>0</span>
+            <div className="flex items-center justify-end text-[10px] font-mono text-slate-400 mt-1">
               <span>{(speedKmh * 0.621371).toFixed(0)} mph</span>
-              <span>160</span>
             </div>
           </div>
         </div>
@@ -132,11 +130,11 @@ export function MapHUD({ state, stallCount = 0, className = '' }: MapHUDProps) {
             >
               {rpm}
             </span>
-            <span className="text-xs font-mono text-slate-400">/ 7000</span>
+            <span className="text-xs font-mono text-slate-500 font-semibold">RPM</span>
           </div>
 
           {/* RPM Bar */}
-          <div className="w-full bg-slate-950 h-2 rounded-full overflow-hidden border border-slate-800">
+          <div className="w-full bg-slate-950 h-2 rounded-full overflow-hidden border border-slate-800 mt-1">
             <div
               className={`h-full rounded-full transition-all duration-75 ${
                 isRedlining

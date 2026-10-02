@@ -20,7 +20,7 @@ export default function LessonDetailPage() {
 
   const lesson = getLessonById(lessonId) || LESSONS[0];
 
-  const { resetSimulation, setGrade, resumeAudio } = useKeyboardControls();
+  const { resetSimulation, setGrade, resumeAudio } = useKeyboardControls({ defaultBoundaryMode: 'off' });
   const { vehicleState, activeFeedback, isPaused, togglePause, isMuted, toggleMute } =
     useSimulatorStore();
 

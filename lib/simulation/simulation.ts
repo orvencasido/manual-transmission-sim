@@ -19,6 +19,7 @@ export class Simulation {
   private transmission: TransmissionModel;
   private vehicle: VehicleDynamicsModel;
   private kinematics: KinematicsModel;
+  private initialBoundaryMode: RoadBoundaryMode;
   private lastInput: InputState = {
     throttle: 0.0,
     brake: 0.0,
@@ -29,13 +30,17 @@ export class Simulation {
     isStarterEngaged: false,
   };
 
-  constructor(config: VehicleConfig = DEFAULT_VEHICLE_CONFIG) {
+  constructor(
+    config: VehicleConfig = DEFAULT_VEHICLE_CONFIG,
+    boundaryMode: RoadBoundaryMode = 'off'
+  ) {
     this.config = config;
+    this.initialBoundaryMode = boundaryMode;
     this.engine = new EngineModel(config.engine);
     this.clutch = new ClutchModel(config.clutch);
     this.transmission = new TransmissionModel(config.transmission);
     this.vehicle = new VehicleDynamicsModel(config);
-    this.kinematics = new KinematicsModel();
+    this.kinematics = new KinematicsModel({ boundaryMode });
   }
 
   /**
@@ -121,10 +126,11 @@ export class Simulation {
     this.kinematics.update(this.vehicle.getState().speed, input.steering, dt);
 
     // 9. Road boundary collision enforcement & continuous curb friction
-    const kinematicsState = this.kinematics.getState();
-    const collision = kinematicsState.collision;
+    // Completely short-circuit when boundaryMode is 'off' (0 overhead in trainer and lesson modes)
+    if (this.kinematics.getBoundaryMode() === 'strict') {
+      const collision = this.kinematics.getCollisionState();
 
-    if (collision && collision.curbContact && collision.boundaryMode === 'strict') {
+      if (collision.curbContact) {
       const currentSpeed = this.vehicle.getState().speed;
       const speedAbs = Math.abs(currentSpeed);
 
@@ -153,6 +159,7 @@ export class Simulation {
       }
     }
   }
+}
 
   /**
    * Set road gradient in radians (positive = uphill, negative = downhill)
@@ -233,5 +240,6 @@ export class Simulation {
     this.transmission.reset();
     this.vehicle.reset();
     this.kinematics.reset();
+    this.kinematics.setBoundaryMode(this.initialBoundaryMode);
   }
 }

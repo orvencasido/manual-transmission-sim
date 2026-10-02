@@ -3,6 +3,8 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { ControlsManager, DEFAULT_CONTROL_RATES } from '@/lib/simulation/controls';
 import { Simulation } from '@/lib/simulation/simulation';
+import { DEFAULT_VEHICLE_CONFIG } from '@/lib/simulation/physics';
+import { RoadBoundaryMode } from '@/lib/simulation/types';
 import { InstructorEvaluator } from '@/components/instructor/instructorEvaluator';
 import { EngineAudioSystem } from '@/lib/audio/engineAudio';
 import { useSimulatorStore } from '@/stores/simulatorStore';
@@ -11,7 +13,15 @@ import { saveDrivingSession } from '@/lib/supabase/queries';
 const FIXED_DT = 1 / 120; // 120 Hz physics tick
 const MAX_FRAME_TIME = 0.1; // Clamp frame spikes
 
-export function useKeyboardControls() {
+export interface KeyboardControlsOptions {
+  defaultBoundaryMode?: RoadBoundaryMode;
+}
+
+export function useKeyboardControls(options?: KeyboardControlsOptions) {
+  const defaultBoundaryMode = options?.defaultBoundaryMode ?? 'off';
+  const boundaryModeRef = useRef<RoadBoundaryMode>(defaultBoundaryMode);
+  boundaryModeRef.current = defaultBoundaryMode;
+
   const controlsManagerRef = useRef<ControlsManager | null>(null);
   const simulationRef = useRef<Simulation | null>(null);
   const evaluatorRef = useRef<InstructorEvaluator | null>(null);
@@ -28,20 +38,18 @@ export function useKeyboardControls() {
   const sessionDistanceRef = useRef<number>(0);
   const lastEngineStatusRef = useRef<string>('OFF');
 
-  const { updateVehicleState, togglePause, setActiveFeedback, addFeedback } = useSimulatorStore();
-
   useEffect(() => {
     const manager = new ControlsManager(DEFAULT_CONTROL_RATES, {
-      onPauseToggle: () => togglePause(),
+      onPauseToggle: () => useSimulatorStore.getState().togglePause(),
     });
     controlsManagerRef.current = manager;
     manager.attach(typeof window !== 'undefined' ? window : undefined, { passive: false });
 
-    const simulation = new Simulation();
+    const simulation = new Simulation(DEFAULT_VEHICLE_CONFIG, defaultBoundaryMode);
     simulationRef.current = simulation;
 
     const evaluator = new InstructorEvaluator((feedback) => {
-      addFeedback(feedback);
+      useSimulatorStore.getState().addFeedback(feedback);
     });
     evaluatorRef.current = evaluator;
 
@@ -55,7 +63,6 @@ export function useKeyboardControls() {
     };
     window.addEventListener('keydown', unlockAudio, { passive: false });
     window.addEventListener('pointerdown', unlockAudio, { passive: true });
-
 
     const loop = (currentTime: number) => {
       if (lastTimeRef.current === 0) {
@@ -72,9 +79,14 @@ export function useKeyboardControls() {
       manager.update(frameTime);
       const currentControls = manager.getState();
 
-      const paused = useSimulatorStore.getState().isPaused;
+      const storeState = useSimulatorStore.getState();
+      const paused = storeState.isPaused;
       if (!paused) {
         accumulatorRef.current += frameTime;
+        // Cap accumulator to avoid spiraling on frame spikes or background tab resumes
+        if (accumulatorRef.current > 0.15) {
+          accumulatorRef.current = 0.15;
+        }
         while (accumulatorRef.current >= FIXED_DT) {
           simulation.tick(currentControls, FIXED_DT);
           accumulatorRef.current -= FIXED_DT;
@@ -83,11 +95,10 @@ export function useKeyboardControls() {
 
       // Publish state snapshot to Zustand store for UI rendering
       const stateSnapshot = simulation.getState(currentControls);
-      updateVehicleState(stateSnapshot);
+      storeState.updateVehicleState(stateSnapshot);
 
       // Synthesize procedural powertrain audio
       if (audioRef.current) {
-        const storeState = useSimulatorStore.getState();
         audioRef.current.setMuted(storeState.isMuted || storeState.isPaused);
         audioRef.current.update(stateSnapshot);
       }
@@ -96,7 +107,7 @@ export function useKeyboardControls() {
       if (evaluatorRef.current) {
         const activeFeedbacks = evaluatorRef.current.evaluate(stateSnapshot, frameTime);
         const primaryFeedback = activeFeedbacks.length > 0 ? activeFeedbacks[0] : null;
-        setActiveFeedback(primaryFeedback);
+        storeState.setActiveFeedback(primaryFeedback);
 
         // Track smooth start feedback events
         if (primaryFeedback?.id === 'FEEDBACK_SMOOTH_START') {
@@ -149,7 +160,7 @@ export function useKeyboardControls() {
         });
       }
     };
-  }, [updateVehicleState, togglePause, setActiveFeedback, addFeedback]);
+  }, [defaultBoundaryMode]);
 
   const resetSimulation = useCallback(() => {
     // 1. Flush previous session stats asynchronously to Supabase
@@ -180,8 +191,13 @@ export function useKeyboardControls() {
     // 3. Reset physics simulation components
     controlsManagerRef.current?.reset();
     simulationRef.current?.reset();
+    simulationRef.current?.setBoundaryMode(boundaryModeRef.current);
     evaluatorRef.current?.reset();
     useSimulatorStore.getState().reset();
+    if (simulationRef.current) {
+      const currentControls = controlsManagerRef.current?.getState();
+      useSimulatorStore.getState().updateVehicleState(simulationRef.current.getState(currentControls));
+    }
   }, []);
 
   const setGrade = useCallback((gradeInPercent: number) => {
@@ -197,20 +213,21 @@ export function useKeyboardControls() {
     if (simulationRef.current) {
       simulationRef.current.setGeoPosition(lat, lon, heading);
       const currentControls = controlsManagerRef.current?.getState();
-      updateVehicleState(simulationRef.current.getState(currentControls));
+      useSimulatorStore.getState().updateVehicleState(simulationRef.current.getState(currentControls));
 
       // Asynchronously fetch vector road corridors for this new region if outside Lucena
       simulationRef.current.getRoadNetwork().fetchRoadsAround(lat, lon).catch(() => {});
     }
-  }, [updateVehicleState]);
+  }, []);
 
-  const setBoundaryMode = useCallback((mode: import('@/lib/simulation/types').RoadBoundaryMode) => {
+  const setBoundaryMode = useCallback((mode: RoadBoundaryMode) => {
+    boundaryModeRef.current = mode;
     if (simulationRef.current) {
       simulationRef.current.setBoundaryMode(mode);
       const currentControls = controlsManagerRef.current?.getState();
-      updateVehicleState(simulationRef.current.getState(currentControls));
+      useSimulatorStore.getState().updateVehicleState(simulationRef.current.getState(currentControls));
     }
-  }, [updateVehicleState]);
+  }, []);
 
   return {
     controlsManager: controlsManagerRef.current,
