@@ -185,6 +185,17 @@ export class EngineModel {
   }
 
   /**
+   * Immediately stall engine due to driveline shock or impact resistance
+   */
+  public stall(): void {
+    this.state.status = 'STALLED';
+    this.state.rpm = 0;
+    this.state.angularVelocity = 0;
+    this.state.netTorque = 0;
+    this.state.isLugging = false;
+  }
+
+  /**
    * Force start engine (used for resets or session starts)
    */
   public forceStart(): void {

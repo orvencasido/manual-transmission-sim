@@ -4,6 +4,8 @@ import React from 'react';
 import Link from 'next/link';
 import { LESSONS } from './curriculumData';
 import { useLessonProgressStore } from '@/stores/lessonProgressStore';
+import { AuthProfilePill } from '@/components/auth/AuthProfilePill';
+import { AuthGuard } from '@/components/auth/AuthGuard';
 
 export default function LessonsPage() {
   const records = useLessonProgressStore((s) => s.records);
@@ -19,7 +21,8 @@ export default function LessonsPage() {
   const nextLesson = LESSONS.find((l) => !records[l.id]?.completed) || LESSONS[0];
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col p-4 sm:p-6 lg:p-8">
+    <AuthGuard>
+      <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col p-4 sm:p-6 lg:p-8">
       <div className="max-w-5xl w-full mx-auto space-y-8">
         {/* Top Header */}
         <header className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800 pb-5">
@@ -36,6 +39,7 @@ export default function LessonsPage() {
           </div>
 
           <div className="flex items-center gap-3">
+            <AuthProfilePill />
             <Link
               href="/simulator"
               className="px-3.5 py-1.5 text-xs font-semibold rounded-xl bg-slate-900 border border-slate-800 hover:bg-slate-800 text-slate-300 transition"
@@ -244,6 +248,7 @@ export default function LessonsPage() {
           </div>
         </div>
       </div>
-    </div>
+      </div>
+    </AuthGuard>
   );
 }

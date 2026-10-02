@@ -8,6 +8,8 @@ import { useKeyboardControls } from '@/components/controls/useKeyboardControls';
 import { LocationSelector } from '@/components/map/LocationSelector';
 import { MapHUD } from '@/components/map/MapHUD';
 import { MapSearchBar } from '@/components/map/MapSearchBar';
+import { AuthProfilePill } from '@/components/auth/AuthProfilePill';
+import { AuthGuard } from '@/components/auth/AuthGuard';
 
 // Client-only dynamic import of Leaflet MapView to guarantee zero SSR/window errors
 const MapView = dynamic(() => import('@/components/map/MapView'), {
@@ -28,7 +30,8 @@ interface LocationToast {
 }
 
 export default function StreetMapDrivingPage() {
-  const { resetSimulation, setGrade, resumeAudio, setGeoPosition } = useKeyboardControls();
+  const { resetSimulation, setGrade, resumeAudio, setGeoPosition, setBoundaryMode } =
+    useKeyboardControls();
   const { vehicleState, activeFeedback, isPaused, togglePause, isMuted, toggleMute } =
     useSimulatorStore();
 
@@ -142,7 +145,8 @@ export default function StreetMapDrivingPage() {
   };
 
   return (
-    <div className="relative w-screen h-screen overflow-hidden bg-slate-950 text-slate-100 flex flex-col select-none">
+    <AuthGuard>
+      <div className="relative w-screen h-screen overflow-hidden bg-slate-950 text-slate-100 flex flex-col select-none">
       {/* ================= TOP NAVIGATION & QUICK ACTIONS BAR ================= */}
       <header className="absolute top-0 inset-x-0 z-[1100] bg-slate-950/80 backdrop-blur-md border-b border-slate-800/80 px-3 sm:px-6 py-2.5 flex items-center justify-between gap-2 sm:gap-3 shadow-xl">
         {/* Left: Brand Identity & Back link */}
@@ -256,6 +260,9 @@ export default function StreetMapDrivingPage() {
             </svg>
             <span className="hidden sm:inline">Reset</span>
           </button>
+
+          {/* User Auth Profile Pill */}
+          <AuthProfilePill />
         </div>
       </header>
 
@@ -338,6 +345,9 @@ export default function StreetMapDrivingPage() {
           headingDegrees={vehicleState.kinematics.headingDegrees}
           speedKmh={vehicleState.dynamics.speedKmh}
           onTeleport={(lat, lon, heading) => setGeoPosition(lat, lon, heading)}
+          boundaryMode={vehicleState.kinematics.collision?.boundaryMode ?? 'strict'}
+          onBoundaryModeChange={setBoundaryMode}
+          collision={vehicleState.kinematics.collision}
           className="w-full h-full"
         />
       </main>
@@ -448,6 +458,7 @@ export default function StreetMapDrivingPage() {
           });
         }}
       />
-    </div>
+      </div>
+    </AuthGuard>
   );
 }

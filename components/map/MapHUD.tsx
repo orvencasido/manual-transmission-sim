@@ -252,6 +252,22 @@ export function MapHUD({ state, stallCount = 0, className = '' }: MapHUDProps) {
               <span className="text-slate-200">{distanceFormatted}</span>
             </div>
 
+            {kinematics.collision && (
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400 text-[11px]">Road:</span>
+                <span
+                  className={`text-[11px] font-semibold truncate max-w-[120px] ${
+                    kinematics.collision.curbContact
+                      ? 'text-rose-400 animate-pulse font-bold'
+                      : 'text-emerald-400'
+                  }`}
+                  title={kinematics.collision.roadName || 'Free Roam'}
+                >
+                  {kinematics.collision.roadName || 'Free Roam'}
+                </span>
+              </div>
+            )}
+
             <div className="flex items-center justify-between">
               <span className="text-slate-400 text-[11px]">Steering:</span>
               <span className="text-slate-200">

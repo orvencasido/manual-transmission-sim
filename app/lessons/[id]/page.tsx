@@ -11,6 +11,7 @@ import { Dashboard } from '@/components/dashboard/Dashboard';
 import { LessonTracker, LessonStepChecklist } from '@/components/instructor/LessonTracker';
 import { LessonCompletionModal } from '@/components/instructor/LessonCompletionModal';
 import { LessonFailureModal } from '@/components/instructor/LessonFailureModal';
+import { AuthGuard } from '@/components/auth/AuthGuard';
 
 export default function LessonDetailPage() {
   const params = useParams();
@@ -56,7 +57,8 @@ export default function LessonDetailPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col p-4 sm:p-6 lg:px-8 w-full max-w-[1800px] mx-auto">
+    <AuthGuard>
+      <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col p-4 sm:p-6 lg:px-8 w-full max-w-[1800px] mx-auto">
       {/* Top Header Navigation */}
       <CockpitHeader
         title={lesson.title}
@@ -124,6 +126,7 @@ export default function LessonDetailPage() {
           onRetry={resetLesson}
         />
       )}
-    </div>
+      </div>
+    </AuthGuard>
   );
 }

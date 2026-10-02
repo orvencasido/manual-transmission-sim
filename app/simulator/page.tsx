@@ -6,6 +6,7 @@ import { useSimulatorStore } from '@/stores/simulatorStore';
 import { useKeyboardControls } from '@/components/controls/useKeyboardControls';
 import { CockpitHeader } from '@/components/dashboard/CockpitHeader';
 import { Dashboard } from '@/components/dashboard/Dashboard';
+import { AuthGuard } from '@/components/auth/AuthGuard';
 
 export default function SimulatorPage() {
   const { resetSimulation, setGrade, resumeAudio } = useKeyboardControls();
@@ -18,7 +19,8 @@ export default function SimulatorPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col p-4 sm:p-6 lg:px-8 w-full max-w-[1800px] mx-auto">
+    <AuthGuard>
+      <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col p-4 sm:p-6 lg:px-8 w-full max-w-[1800px] mx-auto">
       {/* Modern Cockpit Automotive Header */}
       <CockpitHeader
         title="Manual Driving Trainer"
@@ -77,6 +79,7 @@ export default function SimulatorPage() {
           showCheatsheet={true}
         />
       </main>
-    </div>
+      </div>
+    </AuthGuard>
   );
 }

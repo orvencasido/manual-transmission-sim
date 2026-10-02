@@ -15,32 +15,16 @@ import {
   LessonProgressRow,
 } from './types';
 
-const ANON_USER_STORAGE_KEY = 'manual_sim_anon_user_id';
-
 /**
- * Retrieves or generates a consistent anonymous client UUID for guests.
- * Ensures guest progress and sessions remain distinct across users.
+ * Returns the currently authenticated user's ID if logged in, or null for guests.
  */
-export function getAnonymousUserId(): string {
-  if (typeof window === 'undefined') {
-    return '00000000-0000-0000-0000-000000000000';
-  }
-
+export async function getAuthenticatedUserId(): Promise<string | null> {
+  if (!isSupabaseConfigured) return null;
   try {
-    let id = localStorage.getItem(ANON_USER_STORAGE_KEY);
-    if (!id) {
-      id = typeof crypto !== 'undefined' && crypto.randomUUID
-        ? crypto.randomUUID()
-        : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-            const r = (Math.random() * 16) | 0;
-            const v = c === 'x' ? r : (r & 0x3) | 0x8;
-            return v.toString(16);
-          });
-      localStorage.setItem(ANON_USER_STORAGE_KEY, id);
-    }
-    return id;
+    const { data } = await supabase.auth.getUser();
+    return data.user?.id ?? null;
   } catch {
-    return '00000000-0000-0000-0000-000000000000';
+    return null;
   }
 }
 
@@ -72,6 +56,7 @@ export interface QueryResult<T> {
 /**
  * Save a completed or reset driving session summary to Supabase.
  * Triggered on user action (e.g. session reset, pause menu save, navigate away).
+ * For logged-in users, attaches user_id. For guests, user_id is null.
  */
 export async function saveDrivingSession(
   sessionData: SaveSessionInput
@@ -81,7 +66,8 @@ export async function saveDrivingSession(
   }
 
   try {
-    const userId = sessionData.userId ?? getAnonymousUserId();
+    const authUserId = await getAuthenticatedUserId();
+    const userId = sessionData.userId !== undefined ? sessionData.userId : authUserId;
 
     const insertPayload: DrivingSessionInsert = {
       user_id: userId,
@@ -120,7 +106,8 @@ export const saveSessionSummary = saveDrivingSession;
 
 /**
  * Save or update lesson progress in Supabase.
- * Upserts based on (user_id, lesson_id).
+ * Cloud persistence applies to authenticated accounts.
+ * Guests maintain progress in localStorage until account creation/merger.
  */
 export async function saveLessonProgress(
   progressData: SaveLessonProgressInput
@@ -130,7 +117,13 @@ export async function saveLessonProgress(
   }
 
   try {
-    const userId = progressData.userId ?? getAnonymousUserId();
+    const authUserId = await getAuthenticatedUserId();
+    const userId = progressData.userId !== undefined ? progressData.userId : authUserId;
+
+    if (!userId) {
+      // Guest progress is maintained in localStorage and merged upon sign-in
+      return { data: null, error: null };
+    }
 
     const upsertPayload: LessonProgressInsert = {
       user_id: userId,
@@ -176,7 +169,12 @@ export async function fetchLessonProgress(
   }
 
   try {
-    const targetUserId = userId ?? getAnonymousUserId();
+    const authUserId = await getAuthenticatedUserId();
+    const targetUserId = userId !== undefined ? userId : authUserId;
+
+    if (!targetUserId) {
+      return { data: [], error: null };
+    }
 
     const { data, error } = await supabase
       .from('lesson_progress')
@@ -211,7 +209,8 @@ export async function fetchRecentSessions(
   }
 
   try {
-    const targetUserId = userId ?? getAnonymousUserId();
+    const authUserId = await getAuthenticatedUserId();
+    const targetUserId = userId !== undefined ? userId : authUserId;
 
     let query = supabase
       .from('driving_sessions')
@@ -221,6 +220,8 @@ export async function fetchRecentSessions(
 
     if (targetUserId) {
       query = query.eq('user_id', targetUserId);
+    } else {
+      query = query.is('user_id', null);
     }
 
     const { data, error } = await query;
@@ -269,12 +270,18 @@ export async function fetchDriverSummary(
   }
 
   try {
-    const targetUserId = userId ?? getAnonymousUserId();
+    const authUserId = await getAuthenticatedUserId();
+    const targetUserId = userId !== undefined ? userId : authUserId;
 
-    const { data, error } = await supabase
-      .from('driving_sessions')
-      .select('*')
-      .eq('user_id', targetUserId);
+    let query = supabase.from('driving_sessions').select('*');
+
+    if (targetUserId) {
+      query = query.eq('user_id', targetUserId);
+    } else {
+      query = query.is('user_id', null);
+    }
+
+    const { data, error } = await query;
 
     if (error) {
       console.warn('Supabase fetchDriverSummary error:', error.message);

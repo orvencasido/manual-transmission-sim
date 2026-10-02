@@ -4,6 +4,8 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import type * as LeafletTypes from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 
+import type { RoadBoundaryMode, RoadCollisionState } from '@/lib/simulation/types';
+
 export type MapOrientationMode = 'heading-up' | 'north-up';
 export type MapInteractionMode = 'hover' | 'select';
 
@@ -15,6 +17,9 @@ export interface MapViewProps {
   onTeleport?: (lat: number, lon: number, heading?: number) => void;
   className?: string;
   initialOrientation?: MapOrientationMode;
+  boundaryMode?: RoadBoundaryMode;
+  onBoundaryModeChange?: (mode: RoadBoundaryMode) => void;
+  collision?: RoadCollisionState;
 }
 
 export type TileTheme = 'dark' | 'standard' | 'hot';
@@ -77,6 +82,9 @@ export default function MapView({
   onTeleport,
   className = '',
   initialOrientation = 'heading-up',
+  boundaryMode = 'strict',
+  onBoundaryModeChange,
+  collision,
 }: MapViewProps) {
   const mapViewportRef = useRef<HTMLDivElement>(null);
   const mapRotatorRef = useRef<HTMLDivElement>(null);
@@ -93,6 +101,7 @@ export default function MapView({
 
   const [orientationMode, setOrientationMode] = useState<MapOrientationMode>(initialOrientation);
   const [interactionMode, setInteractionMode] = useState<MapInteractionMode>('hover');
+  const [currentBoundaryMode, setCurrentBoundaryMode] = useState<RoadBoundaryMode>(boundaryMode);
   const [showTrail, setShowTrail] = useState(false);
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [isFollowing, setIsFollowing] = useState(true);
@@ -100,6 +109,10 @@ export default function MapView({
   const [tileTheme, setTileTheme] = useState<TileTheme>('dark');
   const [breadcrumbCount, setBreadcrumbCount] = useState(0);
   const [isMapReady, setIsMapReady] = useState(false);
+
+  useEffect(() => {
+    setCurrentBoundaryMode(boundaryMode);
+  }, [boundaryMode]);
 
   // Keep latest onTeleport in ref
   const onTeleportRef = useRef(onTeleport);
@@ -156,7 +169,7 @@ export default function MapView({
         })
         .addTo(map);
 
-      // Create Custom SVG Vehicle Marker Icon
+      // Create Custom SVG Vehicle Marker Icon (Top-View Car)
       // In Heading-Up mode: wrapper is rotated by -heading, so marker rotated by +heading points straight UP (0° on screen)
       // In North-Up mode: wrapper is at 0°, so marker rotated by +heading points in heading direction
       const carIcon = L.divIcon({
@@ -164,13 +177,75 @@ export default function MapView({
         html: `
           <div id="car-pointer-root" style="width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; pointer-events: none;">
             <div id="car-pointer-rotator" style="width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; transform-origin: 24px 24px; transform: rotate(${headingDegrees}deg); will-change: transform;">
-              <svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" style="filter: drop-shadow(0 0 8px rgba(6,182,212,0.85));">
-                <!-- Outer Pulse Halo -->
-                <circle cx="24" cy="24" r="21" fill="rgba(6,182,212,0.16)" stroke="#06b6d4" stroke-width="1.5" stroke-dasharray="3 3"/>
-                <!-- Direction Pointer Arrow (pointing strictly North/Up at 0 deg) -->
-                <path d="M24 5L37 38L24 30L11 38L24 5Z" fill="#06b6d4" stroke="#ffffff" stroke-width="1.75" stroke-linejoin="round"/>
-                <!-- Center Cockpit Core -->
-                <circle cx="24" cy="24" r="3.5" fill="#ffffff" stroke="#0891b2" stroke-width="1.5"/>
+              <svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" style="filter: drop-shadow(0 2px 6px rgba(0,0,0,0.75)) drop-shadow(0 0 10px rgba(6,182,212,0.6));">
+                <defs>
+                  <!-- Metallic Body Gradient -->
+                  <linearGradient id="carBodyGrad" x1="14" y1="6" x2="34" y2="42" gradientUnits="userSpaceOnUse">
+                    <stop offset="0%" stop-color="#38bdf8"/>
+                    <stop offset="35%" stop-color="#06b6d4"/>
+                    <stop offset="75%" stop-color="#0284c7"/>
+                    <stop offset="100%" stop-color="#0369a1"/>
+                  </linearGradient>
+                  <!-- Tinted Windshield Glass -->
+                  <linearGradient id="glassGrad" x1="24" y1="14" x2="24" y2="36" gradientUnits="userSpaceOnUse">
+                    <stop offset="0%" stop-color="#0b1120"/>
+                    <stop offset="100%" stop-color="#1e293b"/>
+                  </linearGradient>
+                  <!-- Forward Headlight Cones -->
+                  <linearGradient id="beamGrad" x1="24" y1="8" x2="24" y2="0" gradientUnits="userSpaceOnUse">
+                    <stop offset="0%" stop-color="rgba(254,240,138,0.55)"/>
+                    <stop offset="100%" stop-color="rgba(254,240,138,0)"/>
+                  </linearGradient>
+                </defs>
+
+                <!-- 1. Soft Forward Headlight Beams -->
+                <polygon points="17.5,8 10,0 21,0 18.5,8" fill="url(#beamGrad)"/>
+                <polygon points="30.5,8 27,0 38,0 29.5,8" fill="url(#beamGrad)"/>
+
+                <!-- 2. Outer Locator Pulse Halo -->
+                <circle cx="24" cy="24" r="22.5" fill="rgba(6,182,212,0.08)" stroke="#06b6d4" stroke-width="1" stroke-dasharray="3 3"/>
+
+                <!-- 3. Four Tires (Top View) -->
+                <!-- Front-Left Tire -->
+                <rect x="12" y="10" width="3.5" height="7.5" rx="1.5" fill="#090d16" stroke="#475569" stroke-width="0.8"/>
+                <!-- Front-Right Tire -->
+                <rect x="32.5" y="10" width="3.5" height="7.5" rx="1.5" fill="#090d16" stroke="#475569" stroke-width="0.8"/>
+                <!-- Rear-Left Tire -->
+                <rect x="12" y="29.5" width="3.5" height="7.5" rx="1.5" fill="#090d16" stroke="#475569" stroke-width="0.8"/>
+                <!-- Rear-Right Tire -->
+                <rect x="32.5" y="29.5" width="3.5" height="7.5" rx="1.5" fill="#090d16" stroke="#475569" stroke-width="0.8"/>
+
+                <!-- 4. Side Mirrors -->
+                <path d="M 14.5,16.5 L 11,17.5 L 11.5,19.5 L 14.5,18.5 Z" fill="#0284c7" stroke="#ffffff" stroke-width="0.5"/>
+                <path d="M 33.5,16.5 L 37,17.5 L 36.5,19.5 L 33.5,18.5 Z" fill="#0284c7" stroke="#ffffff" stroke-width="0.5"/>
+
+                <!-- 5. Main Car Body Shell -->
+                <path d="M 18,6.5 C 20.5,5.5 27.5,5.5 30,6.5 C 32.5,7.8 33.5,11 33.5,15.5 L 33.5,32.5 C 33.5,37 32.5,41 30,41.5 C 27.5,42.5 20.5,42.5 18,41.5 C 15.5,41 14.5,37 14.5,32.5 L 14.5,15.5 C 14.5,11 15.5,7.8 18,6.5 Z"
+                  fill="url(#carBodyGrad)" stroke="#ffffff" stroke-width="1.2" stroke-linejoin="round"/>
+
+                <!-- 6. Front Hood Contours & Direction Arrow -->
+                <path d="M 20,8 L 21,14 M 28,8 L 27,14" stroke="rgba(255,255,255,0.4)" stroke-width="0.75" stroke-linecap="round"/>
+                <path d="M 24,3.5 L 26,6.5 L 22,6.5 Z" fill="#38bdf8" stroke="#ffffff" stroke-width="0.6"/>
+
+                <!-- 7. Front Windshield -->
+                <path d="M 17.5,15 C 20.5,14.2 27.5,14.2 30.5,15 L 29.5,21 C 26.5,20.5 21.5,20.5 18.5,21 Z"
+                  fill="url(#glassGrad)" stroke="#38bdf8" stroke-width="0.75"/>
+
+                <!-- 8. Cabin Roof Shell & Sunroof -->
+                <rect x="18" y="21" width="12" height="10" rx="2" fill="#0284c7" stroke="rgba(255,255,255,0.3)" stroke-width="0.6"/>
+                <rect x="19.5" y="22.5" width="9" height="7" rx="1.5" fill="#082f49" stroke="#38bdf8" stroke-width="0.5"/>
+
+                <!-- 9. Rear Windshield -->
+                <path d="M 18.5,31 C 21.5,31.5 26.5,31.5 29.5,31 L 29,35.5 C 27,36 21,36 19,35.5 Z"
+                  fill="url(#glassGrad)" stroke="#38bdf8" stroke-width="0.75"/>
+
+                <!-- 10. Xenon Headlights -->
+                <ellipse cx="17.5" cy="8" rx="2" ry="1.2" fill="#fef08a" stroke="#ffffff" stroke-width="0.5"/>
+                <ellipse cx="30.5" cy="8" rx="2" ry="1.2" fill="#fef08a" stroke="#ffffff" stroke-width="0.5"/>
+
+                <!-- 11. Red LED Taillights -->
+                <rect x="15.5" y="40.5" width="3.5" height="1.4" rx="0.5" fill="#f43f5e" stroke="#fda4af" stroke-width="0.3"/>
+                <rect x="29" y="40.5" width="3.5" height="1.4" rx="0.5" fill="#f43f5e" stroke="#fda4af" stroke-width="0.3"/>
               </svg>
             </div>
           </div>
@@ -542,6 +617,11 @@ export default function MapView({
         />
       </div>
 
+      {/* Curb Strike Red Flash Vignette */}
+      {collision?.curbContact && boundaryMode !== 'off' && (
+        <div className="absolute inset-0 pointer-events-none z-[1200] border-4 sm:border-8 border-rose-500/80 bg-rose-500/10 animate-pulse transition-opacity duration-75" />
+      )}
+
       {/* ================= FIXED SCREEN-SPACE MAP OVERLAYS ================= */}
 
       {/* Top-Right Floating Map Controls Stack */}
@@ -603,6 +683,32 @@ export default function MapView({
           }
         >
           <span className="text-base sm:text-lg">🧭</span>
+        </button>
+
+        {/* Road Boundary Walls Mode Toggle Button */}
+        <button
+          type="button"
+          onClick={() => {
+            const nextMode: RoadBoundaryMode =
+              boundaryMode === 'strict' ? 'soft' : boundaryMode === 'soft' ? 'off' : 'strict';
+            onBoundaryModeChange?.(nextMode);
+          }}
+          className={`p-2.5 sm:p-3 rounded-2xl border shadow-2xl backdrop-blur-md transition flex items-center justify-center ${
+            boundaryMode === 'strict'
+              ? 'bg-emerald-950/85 text-emerald-300 border-emerald-500/60 ring-1 ring-emerald-500/30'
+              : boundaryMode === 'soft'
+              ? 'bg-amber-950/85 text-amber-300 border-amber-500/60 ring-1 ring-amber-500/30'
+              : 'bg-slate-900/90 text-slate-500 border-slate-800 hover:text-slate-300 hover:bg-slate-800'
+          }`}
+          title={
+            boundaryMode === 'strict'
+              ? 'Road Boundaries: STRICT (Cannot leave asphalt) — Click for Soft'
+              : boundaryMode === 'soft'
+              ? 'Road Boundaries: SOFT (Curb friction/scrape) — Click for Off'
+              : 'Road Boundaries: OFF (Free Roam) — Click for Strict'
+          }
+        >
+          <span className="text-base sm:text-lg">🚧</span>
         </button>
 
         {/* Camera Tracking Toggle / Re-center */}
@@ -787,6 +893,33 @@ export default function MapView({
           </div>
         )}
       </div>
+
+      {/* Bottom Road Corridor Info Badge (Above HUD or at bottom edge) */}
+      {collision?.roadName && (
+        <div className="absolute top-[220px] left-4 sm:left-6 z-[1000] pointer-events-none hidden md:flex items-center gap-2 px-3 py-1.5 rounded-2xl bg-slate-900/90 border border-slate-800 text-xs font-mono backdrop-blur-md shadow-xl">
+          <span className="text-cyan-400">🛣️</span>
+          <span className="text-slate-200 font-medium truncate max-w-[200px]" title={collision.roadName}>
+            {collision.roadName}
+          </span>
+          <span className="text-slate-600">|</span>
+          <span className="text-slate-400">W: {collision.roadWidth}m</span>
+          <span className="text-slate-600">|</span>
+          <span className={collision.curbContact ? 'text-rose-400 font-bold animate-pulse' : 'text-slate-400'}>
+            Curb: {collision.distanceToCurb.toFixed(1)}m
+          </span>
+          <span
+            className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+              boundaryMode === 'strict'
+                ? 'bg-emerald-950/80 text-emerald-400 border border-emerald-800/60'
+                : boundaryMode === 'soft'
+                ? 'bg-amber-950/80 text-amber-400 border border-amber-800/60'
+                : 'bg-slate-800 text-slate-400'
+            }`}
+          >
+            {boundaryMode}
+          </span>
+        </div>
+      )}
     </div>
   );
 }

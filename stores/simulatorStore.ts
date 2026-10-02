@@ -55,6 +55,22 @@ const INITIAL_VEHICLE_STATE: VehicleState = {
     yawRate: 0,
     worldX: 0,
     worldY: 0,
+    collision: {
+      isColliding: false,
+      curbContact: false,
+      roadName: 'Quezon Avenue',
+      distanceToCurb: 5.0,
+      roadWidth: 10.0,
+      boundaryMode: 'strict',
+    },
+  },
+  collision: {
+    isColliding: false,
+    curbContact: false,
+    roadName: 'Quezon Avenue',
+    distanceToCurb: 5.0,
+    roadWidth: 10.0,
+    boundaryMode: 'strict',
   },
 };
 

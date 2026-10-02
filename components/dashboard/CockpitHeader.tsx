@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { EngineStatus } from '@/lib/simulation/types';
+import { AuthProfilePill } from '@/components/auth/AuthProfilePill';
 
 export interface CockpitHeaderProps {
   title?: string;
@@ -181,6 +182,9 @@ export function CockpitHeader({
           </svg>
           <span>{resetLabel}</span>
         </button>
+
+        {/* User Auth Profile Pill */}
+        <AuthProfilePill />
 
         {/* Navigation Link */}
         {backHref && (

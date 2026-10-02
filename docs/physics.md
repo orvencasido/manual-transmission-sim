@@ -143,3 +143,34 @@ $$v_{new} = v_{current} + a \cdot \Delta t$$
 $$x_{new} = x_{current} + v_{new} \cdot \Delta t$$
 
 Static friction thresholds prevent perpetual microscopic jitter when the vehicle is stationary.
+
+---
+
+### 3.6. Road Vector Corridor & Spatial Projection
+
+The road network is represented as sequences of 2D line segments $A(x_1, y_1)$ to $B(x_2, y_2)$ in local metric coordinates converted from WGS-84 coordinates:
+
+$$dx = (\text{lon} - \text{lon}_A) \cdot 111139 \cdot \cos(\text{lat}_{rad})$$
+$$dy = (\text{lat} - \text{lat}_A) \cdot 111139$$
+
+For vehicle location $P(x, y)$ relative to segment vector $\vec{v} = B - A$ and vehicle offset $\vec{u} = P - A$:
+* **Projection Scalar**:
+  $$t = \frac{\vec{u} \cdot \vec{v}}{|\vec{v}|^2}, \quad t_{\text{clamped}} = \max(0, \min(1, t))$$
+* **Closest Centerline Point**: $C = A + t_{\text{clamped}} \vec{v}$
+* **Perpendicular Distance**: $d_{\perp} = |P - C|$
+* **Usable Corridor Limit**:
+  $$R_{\text{max}} = \frac{W_{\text{road}}}{2} - \frac{W_{\text{car}}}{2} \quad (W_{\text{car}} = 1.8\text{ m})$$
+
+---
+
+### 3.7. Collision Enforcement & Powertrain Stall Dynamics
+
+* **Boundary Modes**:
+  * `'strict'`: If $d_{\perp} \ge R_{\text{max}}$, the vehicle is clamped back to $R_{\text{max}}$ along the inward unit normal $\hat{n} = \frac{C - P}{|C - P|}$.
+  * `'soft'`: Penetration beyond curb is allowed but collision contact is flagged.
+  * `'off'`: Free roaming without road boundaries.
+* **Curb Impact Momentum Loss**:
+  When curb contact occurs in `'strict'` mode at speed ($|v| > 0.5\text{ m/s}$), instantaneous vehicle velocity drops by 50%.
+* **Collision Stall Risk**:
+  If the vehicle strikes a curb at speed in gear with the clutch engaged ($c_{\text{eng}} > 0.25$), the sudden driveline stoppage drags the engine RPM below $\text{stallRpm}$, triggering an immediate mechanical stall.
+
