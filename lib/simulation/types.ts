@@ -91,6 +91,16 @@ export interface VehicleDynamicsState {
   isRollingBackward: boolean;
 }
 
+export interface KinematicsState {
+  latitude: number;
+  longitude: number;
+  headingDegrees: number; // 0 to 360 (0 = North, 90 = East, 180 = South, 270 = West)
+  headingRadians: number;
+  yawRate: number; // rad/s
+  worldX: number; // cumulative meters East from spawn
+  worldY: number; // cumulative meters North from spawn
+}
+
 export interface VehicleState {
   timestamp: number;
   engine: EngineState;
@@ -98,6 +108,7 @@ export interface VehicleState {
   transmission: TransmissionState;
   dynamics: VehicleDynamicsState;
   controls: InputState;
+  kinematics: KinematicsState;
 }
 
 export interface InstructorFeedback {

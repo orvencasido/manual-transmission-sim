@@ -114,10 +114,21 @@ Phase 11: Driving Lessons & Curriculum
 * [x] Dual-write and background sync for lesson curriculum progress.
 * [x] Driver Statistics & Progress telemetry dashboard in `app/progress/page.tsx`.
 
-### Phase 11: Driving Lessons & Curriculum
-* Create guided lesson modules in `app/lessons/`:
+### Phase 11: Driving Lessons & Curriculum (Completed)
+* [x] Create guided lesson modules in `app/lessons/` and `app/lessons/[id]/`:
   1. *Finding the Bite Point* (no throttle, slow clutch release until forward creep).
   2. *Smooth Flat Starts* (balancing throttle and clutch simultaneously).
   3. *Sequential Upshifting* (1st $\rightarrow$ 2nd $\rightarrow$ 3rd with rev drop).
   4. *Hill Starts & Handbrake Transition* (preventing backward rollback on incline).
   5. *Downshifting & Rev Matching*.
+* [x] Real-time step evaluator (`useLessonRunner.ts`) with hold timers and failure boundaries.
+* [x] Step-by-step HUD tracker, completion report card, and diagnostic retry modal.
+* [x] Local storage and Supabase progress persistence.
+
+### Phase 12: OpenStreetMap Real-World Driving Simulator (Planned)
+* Build top-down 2D driving simulator using free, community-driven **OpenStreetMap (OSM)**:
+  * **2D Bicycle Kinematic Model** (`lib/simulation/kinematics.ts`): Translate forward velocity and steering angle into real-world yaw heading, curved trajectory, and Lat/Lon coordinates (`physics_agent`).
+  * **OpenStreetMap Tile View** (`components/map/MapView.tsx`): Lightweight Leaflet.js OSM raster tile integration with real-time rotated car marker and camera tracking (`frontend_agent`).
+  * **GPS Breadcrumb Trail**: Visualizing the driven route on real streets in real time (`frontend_agent`).
+  * **Location Selector & Global Search** (`components/map/LocationSelector.tsx`): Curated iconic driving presets (San Francisco hills, Tokyo Shibuya, Nürburgring, Paris) plus free global address search via OSM Nominatim API (`frontend_agent`).
+  * **Dedicated Map Page & Cockpit HUD Overlay** (`app/map/page.tsx`): Fullscreen driving experience with transparent cockpit HUD instruments (`frontend_agent`).
