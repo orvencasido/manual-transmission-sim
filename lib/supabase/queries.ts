@@ -13,7 +13,9 @@ import {
   DrivingSessionRow,
   LessonProgressInsert,
   LessonProgressRow,
+  Json,
 } from './types';
+import { TaxiShiftStats } from '@/lib/taxi/types';
 
 /**
  * Returns the currently authenticated user's ID if logged in, or null for guests.
@@ -313,3 +315,195 @@ export async function fetchDriverSummary(
     };
   }
 }
+
+export interface TaxiCareerStats {
+  totalEarnings: number;
+  completedTrips: number;
+  totalDistanceKm: number;
+  totalDurationSeconds: number;
+  averageComfort: number;
+  shiftsCount: number;
+  bestShiftEarnings: number;
+  lastShiftAt: string;
+}
+
+const TAXI_GUEST_STORAGE_KEY = 'manual_sim_taxi_career';
+
+/**
+ * Save a completed Taxi shift and update career statistics.
+ * For guests, saves to localStorage; for authenticated users, updates profiles.preferences.
+ */
+export async function saveTaxiShift(
+  shiftStats: TaxiShiftStats,
+  userId?: string
+): Promise<QueryResult<TaxiCareerStats>> {
+  const authUserId = await getAuthenticatedUserId();
+  const targetUserId = userId !== undefined ? userId : authUserId;
+
+  // Persist session to driving_sessions for global telemetry
+  saveDrivingSession({
+    userId: targetUserId,
+    durationSeconds: shiftStats.totalDurationSeconds,
+    stallCount: shiftStats.stallsCount,
+    smoothStarts: shiftStats.smoothShiftsCount,
+    maxSpeedKmh: 65.0,
+    distanceMeters: Math.round(shiftStats.totalDistanceKm * 1000),
+  }).catch(() => {});
+
+  if (!targetUserId || !isSupabaseConfigured) {
+    if (typeof window !== 'undefined') {
+      try {
+        const raw = localStorage.getItem(TAXI_GUEST_STORAGE_KEY);
+        const prev: TaxiCareerStats = raw
+          ? JSON.parse(raw)
+          : {
+              totalEarnings: 0,
+              completedTrips: 0,
+              totalDistanceKm: 0,
+              totalDurationSeconds: 0,
+              averageComfort: 100,
+              shiftsCount: 0,
+              bestShiftEarnings: 0,
+              lastShiftAt: new Date().toISOString(),
+            };
+
+        const newShiftsCount = prev.shiftsCount + 1;
+        const updatedComfort = Math.round(
+          (prev.averageComfort * prev.shiftsCount + shiftStats.averageComfort) /
+            newShiftsCount
+        );
+
+        const updated: TaxiCareerStats = {
+          totalEarnings:
+            Math.round((prev.totalEarnings + shiftStats.totalEarnings) * 100) / 100,
+          completedTrips: prev.completedTrips + shiftStats.completedTrips,
+          totalDistanceKm:
+            Math.round((prev.totalDistanceKm + shiftStats.totalDistanceKm) * 10) / 10,
+          totalDurationSeconds:
+            prev.totalDurationSeconds + shiftStats.totalDurationSeconds,
+          averageComfort: updatedComfort,
+          shiftsCount: newShiftsCount,
+          bestShiftEarnings: Math.max(prev.bestShiftEarnings, shiftStats.totalEarnings),
+          lastShiftAt: new Date().toISOString(),
+        };
+
+        localStorage.setItem(TAXI_GUEST_STORAGE_KEY, JSON.stringify(updated));
+        return { data: updated, error: null };
+      } catch (err) {
+        return {
+          data: null,
+          error: err instanceof Error ? err : new Error(String(err)),
+        };
+      }
+    }
+    return { data: null, error: null };
+  }
+
+  // Authenticated user: persist into profile preferences
+  try {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('preferences')
+      .eq('id', targetUserId)
+      .single();
+
+    const prefs = (profile?.preferences as Record<string, unknown>) || {};
+    const prevStats = (prefs.taxi_stats as TaxiCareerStats | undefined) || {
+      totalEarnings: 0,
+      completedTrips: 0,
+      totalDistanceKm: 0,
+      totalDurationSeconds: 0,
+      averageComfort: 100,
+      shiftsCount: 0,
+      bestShiftEarnings: 0,
+      lastShiftAt: new Date().toISOString(),
+    };
+
+    const newShiftsCount = prevStats.shiftsCount + 1;
+    const updatedComfort = Math.round(
+      (prevStats.averageComfort * prevStats.shiftsCount + shiftStats.averageComfort) /
+        newShiftsCount
+    );
+
+    const updatedCareer: TaxiCareerStats = {
+      totalEarnings:
+        Math.round((prevStats.totalEarnings + shiftStats.totalEarnings) * 100) / 100,
+      completedTrips: prevStats.completedTrips + shiftStats.completedTrips,
+      totalDistanceKm:
+        Math.round((prevStats.totalDistanceKm + shiftStats.totalDistanceKm) * 10) / 10,
+      totalDurationSeconds:
+        prevStats.totalDurationSeconds + shiftStats.totalDurationSeconds,
+      averageComfort: updatedComfort,
+      shiftsCount: newShiftsCount,
+      bestShiftEarnings: Math.max(prevStats.bestShiftEarnings, shiftStats.totalEarnings),
+      lastShiftAt: new Date().toISOString(),
+    };
+
+    const updatedPrefs = {
+      ...prefs,
+      taxi_stats: updatedCareer,
+    };
+
+    await supabase
+      .from('profiles')
+      .update({ preferences: updatedPrefs as unknown as Json })
+      .eq('id', targetUserId);
+
+    return { data: updatedCareer, error: null };
+  } catch (err) {
+    console.warn('Supabase saveTaxiShift exception:', err);
+    return {
+      data: null,
+      error: err instanceof Error ? err : new Error(String(err)),
+    };
+  }
+}
+
+/**
+ * Fetch career statistics for Taxi mode.
+ */
+export async function fetchTaxiCareerStats(
+  userId?: string
+): Promise<QueryResult<TaxiCareerStats>> {
+  const authUserId = await getAuthenticatedUserId();
+  const targetUserId = userId !== undefined ? userId : authUserId;
+
+  const fallback: TaxiCareerStats = {
+    totalEarnings: 0,
+    completedTrips: 0,
+    totalDistanceKm: 0,
+    totalDurationSeconds: 0,
+    averageComfort: 100,
+    shiftsCount: 0,
+    bestShiftEarnings: 0,
+    lastShiftAt: '',
+  };
+
+  if (!targetUserId || !isSupabaseConfigured) {
+    if (typeof window !== 'undefined') {
+      try {
+        const raw = localStorage.getItem(TAXI_GUEST_STORAGE_KEY);
+        if (raw) return { data: JSON.parse(raw), error: null };
+      } catch {}
+    }
+    return { data: fallback, error: null };
+  }
+
+  try {
+    const { data: profile, error } = await supabase
+      .from('profiles')
+      .select('preferences')
+      .eq('id', targetUserId)
+      .single();
+
+    if (error || !profile?.preferences) {
+      return { data: fallback, error: null };
+    }
+
+    const prefs = profile.preferences as Record<string, unknown>;
+    return { data: (prefs.taxi_stats as TaxiCareerStats) || fallback, error: null };
+  } catch (err) {
+    return { data: fallback, error: null };
+  }
+}
+

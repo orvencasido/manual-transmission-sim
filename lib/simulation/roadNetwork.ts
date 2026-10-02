@@ -50,24 +50,24 @@ export interface IndexedSegment {
   maxLon: number;
 }
 
-export const CAR_HALF_WIDTH_METERS = 0.9; // Standard passenger car half-width (1.8m total width)
-export const SHOULDER_BUFFER_METERS = 1.5; // Generous shoulder margin before curb contact
+export const CAR_HALF_WIDTH_METERS = 0.75; // Standard subcompact sedan clearance (1.5m body width)
+export const SHOULDER_BUFFER_METERS = 2.5; // Generous shoulder margin for realistic road corridors & cornering
 export const METERS_PER_LAT_DEGREE = 111139;
 
 export const DEFAULT_ROAD_WIDTHS: Record<string, number> = {
   motorway: 18.0,
   trunk: 18.0,
-  primary: 15.0,
-  secondary: 13.0,
-  tertiary: 11.0,
-  residential: 10.0,
-  service: 7.5,
-  alley: 7.5,
-  unclassified: 10.0,
+  primary: 16.0,
+  secondary: 12.0,
+  tertiary: 9.0,
+  residential: 7.5,
+  unclassified: 7.0,
+  service: 6.0,
+  alley: 6.0,
 };
 
 export function getRoadWidth(highway: string): number {
-  return DEFAULT_ROAD_WIDTHS[highway] ?? 10.0;
+  return DEFAULT_ROAD_WIDTHS[highway] ?? 7.5;
 }
 
 /**
@@ -273,7 +273,69 @@ export const DEFAULT_LUCENA_ROADS: RoadSegmentDefinition[] = [
       [13.9530, 121.6045],
     ],
   },
+  {
+    id: 'route_607_lucena_tayabas',
+    name: 'Lucena-Tayabas Road (Route 607)',
+    highway: 'primary',
+    width: 14.0,
+    coordinates: [
+      [13.9575, 121.5975],
+      [13.9620, 121.5985],
+      [13.9680, 121.6000],
+      [13.9750, 121.6010],
+      [13.9830, 121.6005],
+      [13.9920, 121.5990],
+      [14.0010, 121.5980],
+      [14.0110, 121.5970],
+      [14.0195, 121.5960],
+      [14.0225, 121.5950],
+      [14.0256, 121.5944],
+    ],
+  },
+  {
+    id: 'tayabas_downtown_loop',
+    name: 'Tayabas Heritage & Plaza Loop',
+    highway: 'secondary',
+    width: 12.0,
+    coordinates: [
+      [14.0225, 121.5950],
+      [14.0248, 121.5938],
+      [14.0265, 121.5925],
+      [14.0285, 121.5910],
+      [14.0278, 121.5950],
+      [14.0256, 121.5944],
+      [14.0240, 121.5960],
+      [14.0225, 121.5950],
+    ],
+  },
+  {
+    id: 'malagonlong_access_rd',
+    name: 'Malagonlong Historic Bridge Road',
+    highway: 'tertiary',
+    width: 11.0,
+    coordinates: [
+      [14.0195, 121.5960],
+      [14.0190, 121.5985],
+      [14.0195, 121.6015],
+      [14.0205, 121.6040],
+    ],
+  },
+  {
+    id: 'tayabas_mountain_route',
+    name: 'Tayabas-Mainit Mountain Resort Road',
+    highway: 'secondary',
+    width: 11.5,
+    coordinates: [
+      [14.0278, 121.5950],
+      [14.0315, 121.5920],
+      [14.0350, 121.5880],
+      [14.0380, 121.5865],
+      [14.0410, 121.5850],
+    ],
+  },
 ];
+
+export const DEFAULT_LUCENA_TAYABAS_ROADS = DEFAULT_LUCENA_ROADS;
 
 export class RoadNetwork {
   private static instance: RoadNetwork | null = null;
@@ -282,7 +344,7 @@ export class RoadNetwork {
   private grid: Map<string, number[]> = new Map(); // cellKey -> segment index array
   private readonly cellSize = 0.002; // ~220 meters grid cell size
 
-  constructor(roads: RoadSegmentDefinition[] = DEFAULT_LUCENA_ROADS) {
+  constructor(roads: RoadSegmentDefinition[] = DEFAULT_LUCENA_TAYABAS_ROADS) {
     this.loadRoads(roads);
   }
 

@@ -175,83 +175,83 @@ export default function MapView({
       const carIcon = L.divIcon({
         className: 'vehicle-marker-wrapper',
         html: `
-          <div id="car-pointer-root" style="width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; pointer-events: none;">
-            <div id="car-pointer-rotator" style="width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; transform-origin: 24px 24px; transform: rotate(${headingDegrees}deg); will-change: transform;">
-              <svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" style="filter: drop-shadow(0 2px 6px rgba(0,0,0,0.75)) drop-shadow(0 0 10px rgba(6,182,212,0.6));">
+          <div id="car-pointer-root" style="width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; pointer-events: none;">
+            <div id="car-pointer-rotator" style="width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; transform-origin: 13px 13px; transform: rotate(${headingDegrees}deg); will-change: transform;">
+              <svg width="26" height="26" viewBox="0 0 26 26" fill="none" xmlns="http://www.w3.org/2000/svg" style="filter: drop-shadow(0 1px 3px rgba(0,0,0,0.75)) drop-shadow(0 0 4px rgba(6,182,212,0.5));">
                 <defs>
                   <!-- Metallic Body Gradient -->
-                  <linearGradient id="carBodyGrad" x1="14" y1="6" x2="34" y2="42" gradientUnits="userSpaceOnUse">
+                  <linearGradient id="carBodyGrad" x1="7.8" y1="4" x2="18.2" y2="22.5" gradientUnits="userSpaceOnUse">
                     <stop offset="0%" stop-color="#38bdf8"/>
                     <stop offset="35%" stop-color="#06b6d4"/>
                     <stop offset="75%" stop-color="#0284c7"/>
                     <stop offset="100%" stop-color="#0369a1"/>
                   </linearGradient>
                   <!-- Tinted Windshield Glass -->
-                  <linearGradient id="glassGrad" x1="24" y1="14" x2="24" y2="36" gradientUnits="userSpaceOnUse">
+                  <linearGradient id="glassGrad" x1="13" y1="8" x2="13" y2="20" gradientUnits="userSpaceOnUse">
                     <stop offset="0%" stop-color="#0b1120"/>
                     <stop offset="100%" stop-color="#1e293b"/>
                   </linearGradient>
                   <!-- Forward Headlight Cones -->
-                  <linearGradient id="beamGrad" x1="24" y1="8" x2="24" y2="0" gradientUnits="userSpaceOnUse">
-                    <stop offset="0%" stop-color="rgba(254,240,138,0.55)"/>
+                  <linearGradient id="beamGrad" x1="13" y1="5" x2="13" y2="0" gradientUnits="userSpaceOnUse">
+                    <stop offset="0%" stop-color="rgba(254,240,138,0.5)"/>
                     <stop offset="100%" stop-color="rgba(254,240,138,0)"/>
                   </linearGradient>
                 </defs>
 
                 <!-- 1. Soft Forward Headlight Beams -->
-                <polygon points="17.5,8 10,0 21,0 18.5,8" fill="url(#beamGrad)"/>
-                <polygon points="30.5,8 27,0 38,0 29.5,8" fill="url(#beamGrad)"/>
+                <polygon points="9.5,4.5 5,0 11.5,0 10.2,4.5" fill="url(#beamGrad)"/>
+                <polygon points="16.5,4.5 14.5,0 21,0 15.8,4.5" fill="url(#beamGrad)"/>
 
                 <!-- 2. Outer Locator Pulse Halo -->
-                <circle cx="24" cy="24" r="22.5" fill="rgba(6,182,212,0.08)" stroke="#06b6d4" stroke-width="1" stroke-dasharray="3 3"/>
+                <circle cx="13" cy="13" r="12" fill="rgba(6,182,212,0.06)" stroke="#06b6d4" stroke-width="0.75" stroke-dasharray="2 2"/>
 
                 <!-- 3. Four Tires (Top View) -->
                 <!-- Front-Left Tire -->
-                <rect x="12" y="10" width="3.5" height="7.5" rx="1.5" fill="#090d16" stroke="#475569" stroke-width="0.8"/>
+                <rect x="6.5" y="5.5" width="2.0" height="4.2" rx="0.8" fill="#090d16" stroke="#475569" stroke-width="0.5"/>
                 <!-- Front-Right Tire -->
-                <rect x="32.5" y="10" width="3.5" height="7.5" rx="1.5" fill="#090d16" stroke="#475569" stroke-width="0.8"/>
+                <rect x="17.5" y="5.5" width="2.0" height="4.2" rx="0.8" fill="#090d16" stroke="#475569" stroke-width="0.5"/>
                 <!-- Rear-Left Tire -->
-                <rect x="12" y="29.5" width="3.5" height="7.5" rx="1.5" fill="#090d16" stroke="#475569" stroke-width="0.8"/>
+                <rect x="6.5" y="16.0" width="2.0" height="4.2" rx="0.8" fill="#090d16" stroke="#475569" stroke-width="0.5"/>
                 <!-- Rear-Right Tire -->
-                <rect x="32.5" y="29.5" width="3.5" height="7.5" rx="1.5" fill="#090d16" stroke="#475569" stroke-width="0.8"/>
+                <rect x="17.5" y="16.0" width="2.0" height="4.2" rx="0.8" fill="#090d16" stroke="#475569" stroke-width="0.5"/>
 
                 <!-- 4. Side Mirrors -->
-                <path d="M 14.5,16.5 L 11,17.5 L 11.5,19.5 L 14.5,18.5 Z" fill="#0284c7" stroke="#ffffff" stroke-width="0.5"/>
-                <path d="M 33.5,16.5 L 37,17.5 L 36.5,19.5 L 33.5,18.5 Z" fill="#0284c7" stroke="#ffffff" stroke-width="0.5"/>
+                <path d="M 8,9 L 6,9.5 L 6.2,10.8 L 8,10.2 Z" fill="#0284c7" stroke="#ffffff" stroke-width="0.3"/>
+                <path d="M 18,9 L 20,9.5 L 19.8,10.8 L 18,10.2 Z" fill="#0284c7" stroke="#ffffff" stroke-width="0.3"/>
 
                 <!-- 5. Main Car Body Shell -->
-                <path d="M 18,6.5 C 20.5,5.5 27.5,5.5 30,6.5 C 32.5,7.8 33.5,11 33.5,15.5 L 33.5,32.5 C 33.5,37 32.5,41 30,41.5 C 27.5,42.5 20.5,42.5 18,41.5 C 15.5,41 14.5,37 14.5,32.5 L 14.5,15.5 C 14.5,11 15.5,7.8 18,6.5 Z"
-                  fill="url(#carBodyGrad)" stroke="#ffffff" stroke-width="1.2" stroke-linejoin="round"/>
+                <path d="M 10,4 C 11.2,3.4 14.8,3.4 16,4 C 17.5,4.8 18.2,6.5 18.2,9 L 18.2,18 C 18.2,20.5 17.5,22.2 16,22.5 C 14.8,22.8 11.2,22.8 10,22.5 C 8.5,22.2 7.8,20.5 7.8,18 L 7.8,9 C 7.8,6.5 8.5,4.8 10,4 Z"
+                  fill="url(#carBodyGrad)" stroke="#ffffff" stroke-width="0.75" stroke-linejoin="round"/>
 
                 <!-- 6. Front Hood Contours & Direction Arrow -->
-                <path d="M 20,8 L 21,14 M 28,8 L 27,14" stroke="rgba(255,255,255,0.4)" stroke-width="0.75" stroke-linecap="round"/>
-                <path d="M 24,3.5 L 26,6.5 L 22,6.5 Z" fill="#38bdf8" stroke="#ffffff" stroke-width="0.6"/>
+                <path d="M 11,5 L 11.5,8 M 15,5 L 14.5,8" stroke="rgba(255,255,255,0.45)" stroke-width="0.5" stroke-linecap="round"/>
+                <path d="M 13,2 L 14.2,3.8 L 11.8,3.8 Z" fill="#38bdf8" stroke="#ffffff" stroke-width="0.4"/>
 
                 <!-- 7. Front Windshield -->
-                <path d="M 17.5,15 C 20.5,14.2 27.5,14.2 30.5,15 L 29.5,21 C 26.5,20.5 21.5,20.5 18.5,21 Z"
-                  fill="url(#glassGrad)" stroke="#38bdf8" stroke-width="0.75"/>
+                <path d="M 9.5,8.8 C 11,8.3 15,8.3 16.5,8.8 L 16,12.2 C 14.5,11.8 11.5,11.8 10,12.2 Z"
+                  fill="url(#glassGrad)" stroke="#38bdf8" stroke-width="0.5"/>
 
                 <!-- 8. Cabin Roof Shell & Sunroof -->
-                <rect x="18" y="21" width="12" height="10" rx="2" fill="#0284c7" stroke="rgba(255,255,255,0.3)" stroke-width="0.6"/>
-                <rect x="19.5" y="22.5" width="9" height="7" rx="1.5" fill="#082f49" stroke="#38bdf8" stroke-width="0.5"/>
+                <rect x="9.8" y="12" width="6.4" height="5.5" rx="1.2" fill="#0284c7" stroke="rgba(255,255,255,0.3)" stroke-width="0.4"/>
+                <rect x="10.8" y="12.8" width="4.4" height="3.8" rx="0.8" fill="#082f49" stroke="#38bdf8" stroke-width="0.3"/>
 
                 <!-- 9. Rear Windshield -->
-                <path d="M 18.5,31 C 21.5,31.5 26.5,31.5 29.5,31 L 29,35.5 C 27,36 21,36 19,35.5 Z"
-                  fill="url(#glassGrad)" stroke="#38bdf8" stroke-width="0.75"/>
+                <path d="M 10,17.5 C 11.5,17.8 14.5,17.8 16,17.5 L 15.6,19.8 C 14.5,20.1 11.5,20.1 10.4,19.8 Z"
+                  fill="url(#glassGrad)" stroke="#38bdf8" stroke-width="0.5"/>
 
                 <!-- 10. Xenon Headlights -->
-                <ellipse cx="17.5" cy="8" rx="2" ry="1.2" fill="#fef08a" stroke="#ffffff" stroke-width="0.5"/>
-                <ellipse cx="30.5" cy="8" rx="2" ry="1.2" fill="#fef08a" stroke="#ffffff" stroke-width="0.5"/>
+                <ellipse cx="9.8" cy="4.8" rx="1.1" ry="0.7" fill="#fef08a" stroke="#ffffff" stroke-width="0.3"/>
+                <ellipse cx="16.2" cy="4.8" rx="1.1" ry="0.7" fill="#fef08a" stroke="#ffffff" stroke-width="0.3"/>
 
                 <!-- 11. Red LED Taillights -->
-                <rect x="15.5" y="40.5" width="3.5" height="1.4" rx="0.5" fill="#f43f5e" stroke="#fda4af" stroke-width="0.3"/>
-                <rect x="29" y="40.5" width="3.5" height="1.4" rx="0.5" fill="#f43f5e" stroke="#fda4af" stroke-width="0.3"/>
+                <rect x="8.5" y="22.0" width="2" height="0.9" rx="0.3" fill="#f43f5e" stroke="#fda4af" stroke-width="0.2"/>
+                <rect x="15.5" y="22.0" width="2" height="0.9" rx="0.3" fill="#f43f5e" stroke="#fda4af" stroke-width="0.2"/>
               </svg>
             </div>
           </div>
         `,
-        iconSize: [48, 48],
-        iconAnchor: [24, 24],
+        iconSize: [26, 26],
+        iconAnchor: [13, 13],
       });
 
       const marker = L.marker([latitude, longitude], {

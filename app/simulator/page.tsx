@@ -58,15 +58,25 @@ export default function SimulatorPage() {
           </div>
         </div>
 
-        <Link
-          href="/map"
-          className="px-4 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs transition flex items-center gap-2 shadow-lg shadow-cyan-500/20"
-        >
-          <span>Launch Street Map Driving</span>
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
-          </svg>
-        </Link>
+        <div className="flex items-center gap-2.5">
+          <Link
+            href="/taxi"
+            className="px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-xs transition flex items-center gap-1.5 shadow-lg shadow-amber-500/20"
+          >
+            <span>🚖</span>
+            <span>Taxi Simulator</span>
+          </Link>
+
+          <Link
+            href="/map"
+            className="px-4 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs transition flex items-center gap-2 shadow-lg shadow-cyan-500/20"
+          >
+            <span>Launch Street Map</span>
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
+            </svg>
+          </Link>
+        </div>
       </div>
 
       {/* Main Simulation 3-Column Ergonomic Cockpit */}

@@ -162,6 +162,15 @@ export default function StreetMapDrivingPage() {
             <span className="hidden md:inline">Cockpit Simulator</span>
           </Link>
 
+          <Link
+            href="/taxi"
+            className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-amber-950/60 border border-amber-800/60 text-amber-300 hover:text-white hover:bg-amber-900/70 text-xs font-semibold transition shadow-sm"
+            title="Switch to Taxi Simulator"
+          >
+            <span>🚖</span>
+            <span className="hidden md:inline">Taxi Mode</span>
+          </Link>
+
           <div>
             <div className="flex items-center gap-1.5 sm:gap-2">
               <span className="text-base">🗺️</span>

@@ -141,6 +141,15 @@ export function AuthProfilePill({ className = '', align = 'right' }: AuthProfile
             <span>Street Map Driving</span>
           </Link>
 
+          <Link
+            href="/taxi"
+            onClick={() => setDropdownOpen(false)}
+            className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-amber-300 hover:text-amber-200 hover:bg-amber-950/40 transition font-semibold"
+          >
+            <span>🚖</span>
+            <span>Taxi Simulator</span>
+          </Link>
+
           <div className="border-t border-slate-800/80 my-1" />
 
           {/* Sign Out Action */}

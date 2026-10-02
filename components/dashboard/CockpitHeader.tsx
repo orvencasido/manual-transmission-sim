@@ -134,10 +134,21 @@ export function CockpitHeader({
             title="Switch to 2D Top-Down OpenStreetMap Driving Simulator"
           >
             <span>🗺️</span>
-            <span className="hidden md:inline font-bold">Street Map Driving</span>
+            <span className="hidden md:inline font-bold">Street Map</span>
             <span className="md:hidden">Map</span>
           </Link>
         )}
+
+        {/* Taxi Simulator Link */}
+        <Link
+          href="/taxi"
+          className="px-3 py-1.5 text-xs font-semibold rounded-xl bg-amber-950/60 text-amber-300 border border-amber-800/60 hover:bg-amber-900/70 hover:border-amber-700 transition flex items-center gap-1.5 shadow-lg shadow-amber-950/30"
+          title="Taxi Simulator — Lucena & Tayabas Corridor"
+        >
+          <span>🚖</span>
+          <span className="hidden md:inline font-bold">Taxi Mode</span>
+          <span className="md:hidden">Taxi</span>
+        </Link>
 
         {/* Audio Toggle */}
         <button
