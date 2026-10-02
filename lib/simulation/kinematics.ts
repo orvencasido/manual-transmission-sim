@@ -1,10 +1,11 @@
 /**
- * 2D Kinematic Bicycle Model & Geodetic Positioning
- * Manual Driving Trainer — Phase 12
+ * 2D Kinematic Bicycle Model, Geodetic Positioning & Road Boundary Enforcement
+ * Manual Driving Trainer — Phase 12 & Phase 13
  */
 
-import { KinematicsState } from './types';
+import { KinematicsState, RoadBoundaryMode, RoadCollisionState } from './types';
 import { clamp } from './physics';
+import { RoadNetwork, CAR_HALF_WIDTH_METERS, SHOULDER_BUFFER_METERS, METERS_PER_LAT_DEGREE } from './roadNetwork';
 
 export interface KinematicsConfig {
   wheelbase?: number; // meters, default: 2.60m
@@ -12,6 +13,8 @@ export interface KinematicsConfig {
   initialLatitude?: number; // default: 13.9314 (Lucena City, Quezon, Philippines)
   initialLongitude?: number; // default: 121.6172 (Lucena City, Quezon, Philippines)
   initialHeadingDegrees?: number; // default: 0 (North)
+  boundaryMode?: RoadBoundaryMode; // default: 'strict'
+  roadNetwork?: RoadNetwork;
 }
 
 export class KinematicsModel {
@@ -20,6 +23,11 @@ export class KinematicsModel {
   private readonly initialLatitude: number;
   private readonly initialLongitude: number;
   private readonly initialHeadingDegrees: number;
+  private readonly initialBoundaryMode: RoadBoundaryMode;
+
+  private roadNetwork: RoadNetwork;
+  private boundaryMode: RoadBoundaryMode;
+  private collision: RoadCollisionState;
 
   private latitude: number;
   private longitude: number;
@@ -35,6 +43,10 @@ export class KinematicsModel {
     this.initialLatitude = config?.initialLatitude ?? 13.9314;
     this.initialLongitude = config?.initialLongitude ?? 121.6172;
     this.initialHeadingDegrees = config?.initialHeadingDegrees ?? 0;
+    this.initialBoundaryMode = config?.boundaryMode ?? 'strict';
+
+    this.roadNetwork = config?.roadNetwork ?? RoadNetwork.getInstance();
+    this.boundaryMode = this.initialBoundaryMode;
 
     this.latitude = this.initialLatitude;
     this.longitude = this.initialLongitude;
@@ -43,6 +55,36 @@ export class KinematicsModel {
     this.yawRate = 0;
     this.worldX = 0;
     this.worldY = 0;
+
+    this.collision = this.evaluateCollision(this.latitude, this.longitude);
+  }
+
+  /**
+   * Set road collision enforcement mode:
+   * - 'strict': Clamp vehicle inside corridor and prevent mounting curbs / sidewalks
+   * - 'soft': Allow leaving corridor but report collisions
+   * - 'off': Completely unrestricted free roaming
+   */
+  public setBoundaryMode(mode: RoadBoundaryMode): void {
+    this.boundaryMode = mode;
+    this.collision.boundaryMode = mode;
+  }
+
+  public getBoundaryMode(): RoadBoundaryMode {
+    return this.boundaryMode;
+  }
+
+  public getCollisionState(): RoadCollisionState {
+    return { ...this.collision };
+  }
+
+  public getRoadNetwork(): RoadNetwork {
+    return this.roadNetwork;
+  }
+
+  public setRoadNetwork(network: RoadNetwork): void {
+    this.roadNetwork = network;
+    this.collision = this.evaluateCollision(this.latitude, this.longitude);
   }
 
   /**
@@ -55,11 +97,10 @@ export class KinematicsModel {
   public update(speedMs: number, normalizedSteering: number, dt: number): void {
     if (dt <= 0) return;
 
-    // Steering angle delta
+    // 1. Steering angle delta & yaw rate
     const clampedSteering = clamp(normalizedSteering, -1.0, 1.0);
     const delta = clampedSteering * this.maxSteerAngleRad;
 
-    // Yaw angular velocity (rad/s)
     // Positive delta (steering right) + positive speedMs (forward) => positive yawRate (turns clockwise towards East)
     this.yawRate = (speedMs / this.wheelbase) * Math.tan(delta);
 
@@ -68,20 +109,135 @@ export class KinematicsModel {
     this.headingRadians = ((this.headingRadians + this.yawRate * dt) % TWO_PI + TWO_PI) % TWO_PI;
     this.headingDegrees = (this.headingRadians * 180) / Math.PI;
 
-    // Metric displacement in world frame (dx = East/West, dy = North/South)
-    const dx = speedMs * Math.sin(this.headingRadians) * dt;
-    const dy = speedMs * Math.cos(this.headingRadians) * dt;
+    // 2. Metric displacement in world frame (dx = East/West, dy = North/South)
+    let dx = speedMs * Math.sin(this.headingRadians) * dt;
+    let dy = speedMs * Math.cos(this.headingRadians) * dt;
 
-    // Geodetic projection (WGS-84 metric approximation: 1 degree latitude ~ 111,139 m)
-    const dLat = dy / 111139;
+    // Geodetic projection (WGS-84 metric approximation)
+    const dLat = dy / METERS_PER_LAT_DEGREE;
     const latRad = (this.latitude * Math.PI) / 180;
     const cosLat = Math.cos(latRad);
-    const dLon = dx / (111139 * (Math.abs(cosLat) > 1e-6 ? cosLat : 1e-6));
+    const dLon = dx / (METERS_PER_LAT_DEGREE * (Math.abs(cosLat) > 1e-6 ? cosLat : 1e-6));
 
-    this.latitude += dLat;
-    this.longitude += dLon;
-    this.worldX += dx;
-    this.worldY += dy;
+    let prospectiveLat = this.latitude + dLat;
+    let prospectiveLon = this.longitude + dLon;
+
+    // 3. Boundary & Collision Enforcement
+    if (this.boundaryMode === 'off') {
+      this.latitude = prospectiveLat;
+      this.longitude = prospectiveLon;
+      this.worldX += dx;
+      this.worldY += dy;
+      this.collision = {
+        isColliding: false,
+        curbContact: false,
+        roadName: '',
+        distanceToCurb: 0,
+        roadWidth: 0,
+        boundaryMode: 'off',
+      };
+      return;
+    }
+
+    const nearest = this.roadNetwork.findNearestRoad(prospectiveLat, prospectiveLon);
+    if (!nearest) {
+      this.latitude = prospectiveLat;
+      this.longitude = prospectiveLon;
+      this.worldX += dx;
+      this.worldY += dy;
+      this.collision = {
+        isColliding: false,
+        curbContact: false,
+        roadName: '',
+        distanceToCurb: 0,
+        roadWidth: 0,
+        boundaryMode: this.boundaryMode,
+      };
+      return;
+    }
+
+    // Usable corridor half-width with generous shoulder buffer minus standard vehicle half-width
+    const effectiveHalfWidth = nearest.halfWidth + SHOULDER_BUFFER_METERS;
+    const maxCenterlineDist = Math.max(0.5, effectiveHalfWidth - CAR_HALF_WIDTH_METERS);
+    const dPerp = nearest.distanceToCenterline;
+    const isContact = dPerp >= maxCenterlineDist;
+    const distanceToCurb = Math.max(0, effectiveHalfWidth - dPerp);
+
+    if (this.boundaryMode === 'soft') {
+      this.latitude = prospectiveLat;
+      this.longitude = prospectiveLon;
+      this.worldX += dx;
+      this.worldY += dy;
+      this.collision = {
+        isColliding: isContact,
+        curbContact: isContact,
+        roadName: nearest.roadName,
+        distanceToCurb,
+        roadWidth: nearest.roadWidth,
+        boundaryMode: 'soft',
+      };
+      return;
+    }
+
+    // 'strict' boundary mode: clamp vehicle center inside the road corridor
+    if (isContact) {
+      const penetration = dPerp - maxCenterlineDist;
+      // nearest.normal points inward toward road centerline (x = East, y = North)
+      const correctionMetersX = penetration * nearest.normal.x;
+      const correctionMetersY = penetration * nearest.normal.y;
+
+      const corrDLat = correctionMetersY / METERS_PER_LAT_DEGREE;
+      const corrDLon = correctionMetersX / (METERS_PER_LAT_DEGREE * (Math.abs(cosLat) > 1e-6 ? cosLat : 1e-6));
+
+      prospectiveLat += corrDLat;
+      prospectiveLon += corrDLon;
+      dx += correctionMetersX;
+      dy += correctionMetersY;
+
+      this.latitude = prospectiveLat;
+      this.longitude = prospectiveLon;
+      this.worldX += dx;
+      this.worldY += dy;
+
+      // Deflect heading to slide smoothly along road edge rather than jerky snapping
+      const headingEast = Math.sin(this.headingRadians);
+      const headingNorth = Math.cos(this.headingRadians);
+      const normalDotHeading = nearest.normal.x * headingEast + nearest.normal.y * headingNorth;
+      if (normalDotHeading < -0.05) {
+        const tangentDot = nearest.tangent.x * headingEast + nearest.tangent.y * headingNorth;
+        const forwardSign = tangentDot >= 0 ? 1 : -1;
+        const targetRad = Math.atan2(forwardSign * nearest.tangent.x, forwardSign * nearest.tangent.y);
+        const TWO_PI = 2 * Math.PI;
+        let diff = (targetRad - this.headingRadians) % TWO_PI;
+        if (diff > Math.PI) diff -= TWO_PI;
+        if (diff < -Math.PI) diff += TWO_PI;
+        this.headingRadians = ((this.headingRadians + diff * Math.min(1.0, 4.0 * dt)) % TWO_PI + TWO_PI) % TWO_PI;
+        this.headingDegrees = (this.headingRadians * 180) / Math.PI;
+      }
+
+      this.collision = {
+        isColliding: true,
+        curbContact: true,
+        roadName: nearest.roadName,
+        distanceToCurb: CAR_HALF_WIDTH_METERS,
+        roadWidth: nearest.roadWidth,
+        boundaryMode: 'strict',
+      };
+    } else {
+      this.latitude = prospectiveLat;
+      this.longitude = prospectiveLon;
+      this.worldX += dx;
+      this.worldY += dy;
+
+      this.collision = {
+        isColliding: false,
+        curbContact: false,
+        roadName: nearest.roadName,
+        distanceToCurb,
+        roadWidth: nearest.roadWidth,
+        boundaryMode: 'strict',
+      };
+    }
   }
 
   /**
@@ -98,6 +254,7 @@ export class KinematicsModel {
     this.yawRate = 0;
     this.worldX = 0;
     this.worldY = 0;
+    this.collision = this.evaluateCollision(this.latitude, this.longitude);
   }
 
   /**
@@ -112,19 +269,61 @@ export class KinematicsModel {
       yawRate: this.yawRate,
       worldX: this.worldX,
       worldY: this.worldY,
+      collision: { ...this.collision },
     };
   }
 
   /**
-   * Reset kinematics to initial configured coordinates and orientation.
+   * Reset kinematics to initial configured coordinates, orientation, and boundaries.
    */
   public reset(): void {
     this.latitude = this.initialLatitude;
     this.longitude = this.initialLongitude;
     this.headingDegrees = ((this.initialHeadingDegrees % 360) + 360) % 360;
     this.headingRadians = (this.headingDegrees * Math.PI) / 180;
+    this.boundaryMode = this.initialBoundaryMode;
     this.yawRate = 0;
     this.worldX = 0;
     this.worldY = 0;
+    this.collision = this.evaluateCollision(this.latitude, this.longitude);
+  }
+
+  private evaluateCollision(lat: number, lon: number): RoadCollisionState {
+    if (this.boundaryMode === 'off') {
+      return {
+        isColliding: false,
+        curbContact: false,
+        roadName: '',
+        distanceToCurb: 0,
+        roadWidth: 0,
+        boundaryMode: 'off',
+      };
+    }
+
+    const nearest = this.roadNetwork.findNearestRoad(lat, lon);
+    if (!nearest) {
+      return {
+        isColliding: false,
+        curbContact: false,
+        roadName: '',
+        distanceToCurb: 0,
+        roadWidth: 0,
+        boundaryMode: this.boundaryMode,
+      };
+    }
+
+    const effectiveHalfWidth = nearest.halfWidth + SHOULDER_BUFFER_METERS;
+    const maxCenterlineDist = Math.max(0.5, effectiveHalfWidth - CAR_HALF_WIDTH_METERS);
+    const isContact = nearest.distanceToCenterline >= maxCenterlineDist;
+    const distanceToCurb = Math.max(0, effectiveHalfWidth - nearest.distanceToCenterline);
+
+    return {
+      isColliding: isContact,
+      curbContact: isContact,
+      roadName: nearest.roadName,
+      distanceToCurb,
+      roadWidth: nearest.roadWidth,
+      boundaryMode: this.boundaryMode,
+    };
   }
 }

@@ -63,6 +63,7 @@ export class EngineAudioSystem {
   // State change tracking for auxiliary SFX triggering
   private lastStatus: string | null = null;
   private lastGear: number | null = null;
+  private lastCurbContact = false;
 
   /**
    * Initialize Web Audio API context and procedural synthesis graph.
@@ -250,6 +251,7 @@ export class EngineAudioSystem {
     let status: 'OFF' | 'STARTING' | 'RUNNING' | 'STALLED' = 'OFF';
     let isStarterEngaged = false;
     let currentGear: number | null = null;
+    let curbContact = false;
 
     if (typeof rpmOrState === 'number') {
       rpm = rpmOrState;
@@ -291,6 +293,9 @@ export class EngineAudioSystem {
       }
 
       currentGear = state.transmission?.currentGear ?? null;
+      curbContact = Boolean(
+        state.collision?.curbContact || state.kinematics?.collision?.curbContact
+      );
     }
 
     // Auto-resume AudioContext if suspended upon detected user interaction
@@ -304,18 +309,19 @@ export class EngineAudioSystem {
     const safeLoad = Number.isFinite(load) ? Math.max(0, Math.min(1.0, load)) : 0;
 
     // Detect state transitions for auxiliary SFX
-    this.handleStateTransitions(status, currentGear);
+    this.handleStateTransitions(status, currentGear, curbContact);
 
     // Update real-time audio parameters
     this.updateAudioParameters(safeRpm, safeThrottle, safeLoad, status, isStarterEngaged);
   }
 
   /**
-   * Monitor engine state and transmission gear shifts to trigger one-shot SFX.
+   * Monitor engine state, transmission gear shifts, and curb collisions to trigger one-shot SFX.
    */
   private handleStateTransitions(
     status: 'OFF' | 'STARTING' | 'RUNNING' | 'STALLED',
-    currentGear: number | null
+    currentGear: number | null,
+    curbContact: boolean = false
   ): void {
     // 1. Engine stall detection (RUNNING -> STALLED)
     if (this.lastStatus === 'RUNNING' && status === 'STALLED') {
@@ -326,6 +332,12 @@ export class EngineAudioSystem {
     if (this.lastGear !== null && currentGear !== null && this.lastGear !== currentGear) {
       this.playGearShiftSound();
     }
+
+    // 3. Road boundary curb collision sound
+    if (curbContact && !this.lastCurbContact) {
+      this.playCurbStrikeSound();
+    }
+    this.lastCurbContact = curbContact;
 
     this.lastStatus = status;
     if (currentGear !== null) {
@@ -401,6 +413,55 @@ export class EngineAudioSystem {
       } else {
         this.starterGain.gain.setTargetAtTime(0.0, now, 0.03);
       }
+    }
+  }
+
+  /**
+   * Procedural One-Shot: Road curb strike / guardrail impact sound effect.
+   * Synthesizes a solid chassis thud and mechanical tire scrape.
+   */
+  private playCurbStrikeSound(): void {
+    if (!this.ctx || this._isMuted || this.ctx.state !== 'running') return;
+    const now = this.ctx.currentTime;
+    const duration = 0.26;
+
+    try {
+      // 1. Heavy low-frequency chassis impact thud (75Hz -> 22Hz)
+      const osc = this.ctx.createOscillator();
+      const filter = this.ctx.createBiquadFilter();
+      const gain = this.ctx.createGain();
+
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(75, now);
+      osc.frequency.setTargetAtTime(22, now, duration * 0.25);
+
+      filter.type = 'lowpass';
+      filter.frequency.setValueAtTime(180, now);
+      filter.frequency.setTargetAtTime(45, now, duration * 0.3);
+
+      gain.gain.setValueAtTime(0.55, now);
+      gain.gain.setTargetAtTime(0.0, now, duration * 0.22);
+
+      osc.connect(filter);
+      filter.connect(gain);
+      gain.connect(this.sfxGain ?? this.masterGain!);
+
+      osc.start(now);
+      osc.stop(now + duration);
+
+      osc.onended = () => {
+        try {
+          osc.disconnect();
+          filter.disconnect();
+          gain.disconnect();
+        } catch {}
+      };
+
+      // 2. High-frequency concrete / metal barrier scrape pulse
+      this.triggerMechanicalClick(now, 1100, 0.35, 0.08);
+      this.triggerMechanicalClick(now + 0.035, 850, 0.25, 0.06);
+    } catch {
+      // Secondary priority: ignore errors
     }
   }
 

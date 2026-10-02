@@ -10,6 +10,8 @@ import {
 import { DrivingSessionRow } from '@/lib/supabase/types';
 import { useLessonProgressStore } from '@/stores/lessonProgressStore';
 import { LESSONS } from '@/app/lessons/curriculumData';
+import { AuthProfilePill } from '@/components/auth/AuthProfilePill';
+import { AuthGuard } from '@/components/auth/AuthGuard';
 
 export default function ProgressPage() {
   const [summary, setSummary] = useState<DriverStatsSummary | null>(null);
@@ -61,7 +63,8 @@ export default function ProgressPage() {
   ).length;
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 p-4 sm:p-6 lg:p-8 max-w-5xl mx-auto space-y-6">
+    <AuthGuard>
+      <div className="min-h-screen bg-slate-950 text-slate-100 p-4 sm:p-6 lg:p-8 max-w-5xl mx-auto space-y-6">
       {/* Header */}
       <header className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800 pb-4">
         <div>
@@ -71,6 +74,7 @@ export default function ProgressPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <AuthProfilePill />
           <Link
             href="/simulator"
             className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-teal-600 hover:bg-teal-500 text-white transition shadow-sm"
@@ -236,6 +240,7 @@ export default function ProgressPage() {
           </div>
         )}
       </section>
-    </div>
+      </div>
+    </AuthGuard>
   );
 }

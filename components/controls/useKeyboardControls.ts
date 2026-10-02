@@ -198,6 +198,17 @@ export function useKeyboardControls() {
       simulationRef.current.setGeoPosition(lat, lon, heading);
       const currentControls = controlsManagerRef.current?.getState();
       updateVehicleState(simulationRef.current.getState(currentControls));
+
+      // Asynchronously fetch vector road corridors for this new region if outside Lucena
+      simulationRef.current.getRoadNetwork().fetchRoadsAround(lat, lon).catch(() => {});
+    }
+  }, [updateVehicleState]);
+
+  const setBoundaryMode = useCallback((mode: import('@/lib/simulation/types').RoadBoundaryMode) => {
+    if (simulationRef.current) {
+      simulationRef.current.setBoundaryMode(mode);
+      const currentControls = controlsManagerRef.current?.getState();
+      updateVehicleState(simulationRef.current.getState(currentControls));
     }
   }, [updateVehicleState]);
 
@@ -209,5 +220,6 @@ export function useKeyboardControls() {
     setGrade,
     resumeAudio,
     setGeoPosition,
+    setBoundaryMode,
   };
 }

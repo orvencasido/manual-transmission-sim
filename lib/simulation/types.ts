@@ -91,6 +91,17 @@ export interface VehicleDynamicsState {
   isRollingBackward: boolean;
 }
 
+export type RoadBoundaryMode = 'strict' | 'soft' | 'off';
+
+export interface RoadCollisionState {
+  isColliding: boolean;
+  curbContact: boolean;
+  roadName: string;
+  distanceToCurb: number;
+  roadWidth: number;
+  boundaryMode: RoadBoundaryMode;
+}
+
 export interface KinematicsState {
   latitude: number;
   longitude: number;
@@ -99,6 +110,7 @@ export interface KinematicsState {
   yawRate: number; // rad/s
   worldX: number; // cumulative meters East from spawn
   worldY: number; // cumulative meters North from spawn
+  collision: RoadCollisionState;
 }
 
 export interface VehicleState {
@@ -109,6 +121,7 @@ export interface VehicleState {
   dynamics: VehicleDynamicsState;
   controls: InputState;
   kinematics: KinematicsState;
+  collision?: RoadCollisionState;
 }
 
 export interface InstructorFeedback {

@@ -125,7 +125,9 @@ export class InstructorEvaluator {
       const gear = state.transmission.currentGear;
       let stallReason = 'You stalled the engine.';
 
-      if (state.controls.parkingBrake) {
+      if (state.collision?.curbContact) {
+        stallReason = `You stalled from curb impact on ${state.collision.roadName || 'road barrier'}: dip the clutch [Space] during sudden stops.`;
+      } else if (state.controls.parkingBrake) {
         stallReason = 'You stalled: parking brake was still engaged while releasing the clutch.';
       } else if (gear > 1) {
         stallReason = `You stalled: attempted to start in gear ${gear} instead of 1st gear. Shift to 1st gear.`;
@@ -351,6 +353,24 @@ export class InstructorEvaluator {
         timestamp: now,
       };
       activeList.push(handbrakeFeedback);
+    }
+
+    // ------------------------------------------------------------------------
+    // Rule 7: Road Boundary & Curb Strike Alert
+    // ------------------------------------------------------------------------
+    const collision = state.collision || state.kinematics?.collision;
+    if (collision?.curbContact && collision.boundaryMode !== 'off') {
+      const isStrict = collision.boundaryMode === 'strict';
+      const curbFeedback: InstructorFeedback = {
+        id: 'curb-strike-alert',
+        type: isStrict ? 'error' : 'warning',
+        message: isStrict
+          ? `Curb strike on ${collision.roadName || 'road'}! Keep vehicle centered between road boundaries.`
+          : `Vehicle veered off-road onto shoulder (${collision.roadName || 'road'}). Steer back to paved lane.`,
+        timestamp: now,
+      };
+      activeList.push(curbFeedback);
+      this.maybeEmitPersistent('curb-strike', curbFeedback, 2500, now);
     }
 
     // Include unexpired event feedbacks

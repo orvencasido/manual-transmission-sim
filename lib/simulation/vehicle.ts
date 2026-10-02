@@ -81,6 +81,25 @@ export class VehicleDynamicsModel {
   }
 
   /**
+   * Directly set vehicle longitudinal speed (m/s)
+   */
+  public setSpeed(speed: number): void {
+    this.state.speed = speed;
+    this.state.speedKmh = speed * 3.6;
+    this.state.isRollingBackward = speed < -0.05;
+  }
+
+  /**
+   * Apply instantaneous impact speed reduction multiplier (0.0 to 1.0)
+   */
+  public applyImpactSpeedReduction(retentionFactor: number): void {
+    const factor = clamp(retentionFactor, 0.0, 1.0);
+    this.state.speed *= factor;
+    this.state.speedKmh = this.state.speed * 3.6;
+    this.state.isRollingBackward = this.state.speed < -0.05;
+  }
+
+  /**
    * Update longitudinal vehicle dynamics over time step dt.
    *
    * @param driveTorque Wheel torque from driveline [Nm]

@@ -3,13 +3,14 @@
  * Manual Driving Trainer
  */
 
-import { VehicleConfig, VehicleState, InputState } from './types';
+import { VehicleConfig, VehicleState, InputState, RoadBoundaryMode } from './types';
 import { clamp, DEFAULT_VEHICLE_CONFIG } from './physics';
 import { EngineModel } from './engine';
 import { ClutchModel } from './clutch';
 import { TransmissionModel } from './transmission';
 import { VehicleDynamicsModel } from './vehicle';
 import { KinematicsModel } from './kinematics';
+import { RoadNetwork } from './roadNetwork';
 
 export class Simulation {
   private config: VehicleConfig;
@@ -118,6 +119,39 @@ export class Simulation {
 
     // 8. Update 2D kinematic bicycle model and geodetic positioning
     this.kinematics.update(this.vehicle.getState().speed, input.steering, dt);
+
+    // 9. Road boundary collision enforcement & continuous curb friction
+    const kinematicsState = this.kinematics.getState();
+    const collision = kinematicsState.collision;
+
+    if (collision && collision.curbContact && collision.boundaryMode === 'strict') {
+      const currentSpeed = this.vehicle.getState().speed;
+      const speedAbs = Math.abs(currentSpeed);
+
+      if (speedAbs > 0.05) {
+        // Continuous physical sliding friction deceleration along curb (slows down gradually over seconds)
+        const frictionMultiplier = Math.max(0.85, 1.0 - 1.2 * dt);
+        this.vehicle.applyImpactSpeedReduction(frictionMultiplier);
+
+        // Re-synchronize wheel speed and transmission driveline following curb sliding friction
+        const postImpactWheelSpeed = this.vehicle.getState().speed / this.config.wheelRadius;
+        this.transmission.update(transInputTorque, postImpactWheelSpeed);
+
+        // Natural manual car stall physics:
+        // Only stall if vehicle speed drops to near standstill (< 0.25 m/s) while in gear
+        // with clutch engaged (pedalPosition < bitePointStart, e.g. < 0.40)
+        const isClutchEngaged = clutchState.pedalPosition < this.config.clutch.bitePointStart;
+
+        if (!isNeutral && isClutchEngaged) {
+          const postRpm = this.transmission.getState().inputShaftRpm;
+          if (speedAbs < 0.25 || postRpm < this.config.engine.stallRpm) {
+            this.engine.stall();
+          } else {
+            this.engine.setLockedRpm(postRpm);
+          }
+        }
+      }
+    }
   }
 
   /**
@@ -135,9 +169,28 @@ export class Simulation {
   }
 
   /**
+   * Set road collision enforcement mode:
+   * - 'strict': Clamp vehicle inside corridor and prevent mounting curbs / sidewalks
+   * - 'soft': Allow leaving corridor but report collisions
+   * - 'off': Completely unrestricted free roaming
+   */
+  public setBoundaryMode(mode: RoadBoundaryMode): void {
+    this.kinematics.setBoundaryMode(mode);
+  }
+
+  public getBoundaryMode(): RoadBoundaryMode {
+    return this.kinematics.getBoundaryMode();
+  }
+
+  public getRoadNetwork(): RoadNetwork {
+    return this.kinematics.getRoadNetwork();
+  }
+
+  /**
    * Return a snapshot of the full vehicle simulation state
    */
   public getState(controls?: InputState): VehicleState {
+    const kinematicsState = this.kinematics.getState();
     return {
       timestamp: Date.now(),
       engine: this.engine.getState(),
@@ -145,7 +198,8 @@ export class Simulation {
       transmission: this.transmission.getState(),
       dynamics: this.vehicle.getState(),
       controls: controls || { ...this.lastInput },
-      kinematics: this.kinematics.getState(),
+      kinematics: kinematicsState,
+      collision: kinematicsState.collision,
     };
   }
 
